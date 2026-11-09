@@ -89,6 +89,31 @@ def install_source() -> str:
     return DEFAULT_SOURCE
 
 
+def companion_on_disk() -> bool:
+    """chimera-numba is installed next to chimera in Hermes' plugins directory (its directory, or a row in Hermes'
+    install record). A running Hermes process never switches to the dependency environment an install commits, so
+    numba can be installed and still not importable here until Hermes restarts."""
+    plugins_dir = os.path.dirname(_plugin_root())
+    if os.path.isfile(os.path.join(plugins_dir, COMPANION, "plugin.yaml")):
+        return True
+    try:
+        with open(os.path.join(plugins_dir, ".install-metadata.json"), encoding="utf-8-sig") as f:
+            rows = json.load(f)
+        return isinstance(rows, dict) and isinstance(rows.get(COMPANION), dict)
+    except (OSError, ValueError):
+        return False
+
+
+RESTART_FOR_COMPANION = (f"{COMPANION} is installed, but this Hermes process started before it - restart Hermes "
+                         "(hermes gateway restart, or quit and reopen the desktop app) to render with numba")
+
+
+def numba_missing_line() -> str:
+    if companion_on_disk():
+        return "numba: not importable in this process - " + RESTART_FOR_COMPANION
+    return "numba: not installed - " + companion_hint()
+
+
 def companion_hint() -> str:
     src = install_source()
     return (f"install the companion plugin {COMPANION} for about 12x faster rendering: "
@@ -140,12 +165,12 @@ def status_text(ctx: Any) -> str:
                 line += f", warm-up marker {str(st.marker.get('content_hash', ''))[:16]}"
             lines.append(line)
         else:
-            lines.append("numba: not installed - " + companion_hint())
+            lines.append(numba_missing_line())
         if st.restart_needed:
             lines.append("restart Hermes: packages were installed after this process started")
         lines.append(f"workers: {st.workers} ({st.workers_alive} running); cache: {st.cache_dir or paths.numba_cache_dir()}")
     elif numpy_ok is False:
-        lines.append("numba: " + ("installed" if _vocal.numba_installed() else "not installed - " + companion_hint()))
+        lines.append("numba: installed" if _vocal.numba_installed() else numba_missing_line())
     ff = media.ffmpeg_path()
     lines.append(f"ffmpeg: {ff}" if ff else "ffmpeg: not found (music is delivered as WAV)")
     lines.append(_provider_line())
@@ -193,7 +218,8 @@ def _warmup(ctx: Any) -> str:
     if st.numba_state == "failed":
         return f"warm-up failed: {st.numba_error or 'unknown error'} - chimera keeps rendering with numpy"
     if not st.numba_installed:
-        return "warm-up started (numpy backend). " + companion_hint()
+        return "warm-up started (numpy backend). " + (RESTART_FOR_COMPANION if companion_on_disk() else
+                                                       companion_hint())
     return f"warm-up started: numba state {st.numba_state} (see /chimera status)"
 
 

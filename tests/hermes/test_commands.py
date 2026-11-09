@@ -165,3 +165,29 @@ def test_install_source(tmp_path, fake_hermes):
         assert cmd.install_source() == "alice/chimera-fork"
     finally:
         c5fakes.unload_plugin(pkg)
+
+
+# A running Hermes never switches to the environment an install commits: chimera-numba installed after start means
+# "restart Hermes", not "install the companion plugin" (what Hermes itself prints after the install)
+def test_status_restart_hint_when_companion_installed(tmp_path, fake_hermes):
+    root = _plugin_copy(tmp_path)
+    pkg = c5fakes.load_plugin(root=root)
+    try:
+        cmd = c5fakes.submodule(pkg, "chimera_hermes.commands")
+        assert not cmd.companion_on_disk()
+        assert "install the companion plugin" in cmd.numba_missing_line()
+        comp = root.parent / "chimera-numba"
+        comp.mkdir()
+        (comp / "plugin.yaml").write_text("manifest_version: 2\nname: chimera-numba\n", encoding="utf-8")
+        assert cmd.companion_on_disk()
+        line = cmd.numba_missing_line().lower()
+        assert "restart hermes" in line and "install the companion plugin" not in line
+        (comp / "plugin.yaml").unlink()
+        comp.rmdir()
+        (root.parent / ".install-metadata.json").write_text(
+            json.dumps({"chimera-numba": {"source": "https://github.com/GottZ/hermes-chimera.git#accel"}}), encoding="utf-8")
+        assert cmd.companion_on_disk()
+        (root.parent / ".install-metadata.json").write_text("{broken", encoding="utf-8")
+        assert not cmd.companion_on_disk()
+    finally:
+        c5fakes.unload_plugin(pkg)
