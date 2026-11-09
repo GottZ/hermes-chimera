@@ -27,7 +27,13 @@ PROTO = 2
 
 BOOTSTRAP = r"""
 import json, os, sys
-_hs = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
+_line = bytearray()
+while not _line.endswith(b"\n"):
+    _c = os.read(0, 1)
+    if not _c:
+        os._exit(0)
+    _line += _c
+_hs = json.loads(_line.decode("utf-8"))
 sys.dont_write_bytecode = bool(_hs.get("dont_write_bytecode", False))
 sys.path[:] = [_hs["root"]] + list(_hs["sys_path"])
 if _hs.get("site_dirs"):
@@ -38,7 +44,7 @@ _proto = os.fdopen(os.dup(1), "wb")
 os.dup2(2, 1)
 import chimera_vocal.worker as _w
 _w.HANDSHAKE = _hs
-_w.serve(sys.stdin.buffer, _proto)
+_w.serve(sys.stdin.buffer.raw if os.name == "nt" else sys.stdin.buffer, _proto)
 """
 
 HANDSHAKE: dict = {}
@@ -187,6 +193,29 @@ def _handle(state: _State, out: BinaryIO, msg: dict) -> None:
         raise ValueError(f"unknown op {op!r}")
 
 
+WIN_POLL_S = 0.05
+
+
+def _wait_for_input(f: BinaryIO) -> None:
+    """Windows: return once the stdin pipe holds data or its writing end is closed, without a read pending on it.
+
+    With a read pending on stdin in this thread, ``import numpy`` in the main thread never returns on Windows (seen
+    with Python 3.11 and 3.14; importing numpy first, or polling like this instead of reading, both work). Windows
+    serialises calls on a synchronous pipe handle, so the import presumably waits on stdin inside a DLL's start-up.
+    The handshake is read without read-ahead and ``f`` is the unbuffered stdin, so no request can sit in a buffer
+    the pipe does not show."""
+    import _winapi
+    import msvcrt
+    h = msvcrt.get_osfhandle(f.fileno())
+    while True:
+        try:
+            if _winapi.PeekNamedPipe(h, 0)[0]:
+                return
+        except OSError:            # writing end closed: the read that follows sees the end of the stream
+            return
+        time.sleep(WIN_POLL_S)
+
+
 def serve(inp: BinaryIO, out: BinaryIO) -> None:
     """Worker main loop: EOF watcher thread, request queue, ops render/warm/selftest/quit."""
     state = _State(fake=_install_test_factory() is not None)
@@ -195,6 +224,8 @@ def serve(inp: BinaryIO, out: BinaryIO) -> None:
     def watch() -> None:
         try:
             while True:
+                if os.name == "nt":
+                    _wait_for_input(inp)
                 msg, _ = read_frame(inp)
                 q.put(msg)
         except BaseException:
