@@ -141,7 +141,7 @@ def test_ffmpeg(plugin, ffmpeg, tmp_path, monkeypatch):
     assert kw["stdin"] is subprocess.DEVNULL
     assert kw["timeout"] == pytest.approx(60.0)
     # hidden window exactly on Windows: CREATE_NO_WINDOW there, no flags elsewhere
-    assert kw.get("creationflags", 0) == (0x08000000 if sys.platform == "win32" else 0)
+    assert kw.get("creationflags", 0) == (0x08000000 if os.name == "nt" else 0)
     media.to_mp3(str(wav), str(mp3), seconds=100.0)
     assert ffmpeg.calls[-1][1]["timeout"] == pytest.approx(200.0)
     monkeypatch.setattr(sys, "platform", "win32")
@@ -163,7 +163,7 @@ def test_ffmpeg(plugin, ffmpeg, tmp_path, monkeypatch):
     assert media.to_mp3(str(wav), str(mp3), seconds=3.0) is False and never.calls == []
     spaced = Path("/x/y z.wav")             # the native form of the path, spaces kept, nothing quoted
     assert media.media_line(spaced) == "MEDIA:" + str(spaced)
-    assert sys.platform == "win32" or media.media_line(spaced) == "MEDIA:/x/y z.wav"
+    assert os.name == "nt" or media.media_line(spaced) == "MEDIA:/x/y z.wav"     # sys.platform is patched above
 
 
 SCORE = {"bpm": 90, "voices": [{"notes": [{"pitch": "C4", "beats": 1}]}]}
