@@ -54,6 +54,13 @@ def api() -> Any:
 def engine(c: Any = None) -> Any:
     """The process-wide Engine with this plugin's current settings applied: a changed ``backend``, ``workers``,
     ``text_prep`` or ``max_voices`` takes effect with the next render, without restarting Hermes."""
+    return engine_and_config(c)[0]
+
+
+def engine_and_config(c: Any = None) -> tuple[Any, Any]:
+    """(process-wide Engine, EngineConfig from the settings of the profile asking now). Every profile of a Hermes
+    process shares the one engine, whose own settings are those applied last; a request therefore carries its
+    profile's settings itself (``speech_options``/``score_options``), resolved here on the caller's thread."""
     from . import settings
 
     cfg = settings.engine_config(c if c is not None else _CTX)
@@ -61,7 +68,17 @@ def engine(c: Any = None) -> Any:
     apply = getattr(eng, "apply_settings", None)
     if apply is not None:
         apply(cfg)
-    return eng
+    return eng, cfg
+
+
+def speech_options(cfg: Any) -> dict:
+    """Per-request engine settings for speech, frozen when the request is made."""
+    return {"text_prep": bool(cfg.text_prep), "backend": cfg.backend}
+
+
+def score_options(cfg: Any) -> dict:
+    """Per-request engine settings for a score, frozen when the request is made."""
+    return {"max_voices": int(cfg.max_voices), "backend": cfg.backend}
 
 
 def is_error(e: BaseException, name: str) -> bool:

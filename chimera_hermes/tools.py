@@ -323,8 +323,9 @@ def _render(a: dict, **kwargs: Any) -> str:
     score = _score(a)
     filename = _opt_str(a, "filename")
     wait_s = _opt_number(a, "wait_s")
-    eng = _vocal.engine()
-    report = eng.check_score(score)
+    eng, cfg = _vocal.engine_and_config()
+    opts = _vocal.score_options(cfg)
+    report = eng.check_score(score, max_voices=opts["max_voices"])
     if not report.ok:
         issues = _issues(report.issues)
         n = sum(1 for i in issues if i.get("severity") == "error") or len(issues)
@@ -340,7 +341,7 @@ def _render(a: dict, **kwargs: Any) -> str:
         out_dir, stem = paths.new_output_stem(raw_name, "score")
         try:
             res = eng.render_score(score, str(out_dir), stem, want_mp3=False, progress=progress, cancel=cancel,
-                                   tmp_dir=_tmp_dir())
+                                   tmp_dir=_tmp_dir(), **opts)
         except BaseException:
             _remove_empty(out_dir / f"{stem}.wav")
             raise
@@ -360,8 +361,8 @@ def _check(a: dict, **kwargs: Any) -> str:
     from .jobs import wait_budget_s
 
     score = _score(a)
-    eng = _vocal.engine()
-    report = eng.check_score(score)
+    eng, cfg = _vocal.engine_and_config()
+    report = eng.check_score(score, max_voices=_vocal.score_options(cfg)["max_voices"])
     kernel = _kernel_now(eng)
     est = dict(report.estimate_s or {})
     budget = wait_budget_s(None)
@@ -388,15 +389,17 @@ def _speak(a: dict, **kwargs: Any) -> str:
         faithful = settings.faithful(_vocal.ctx())
     presets = _vocal.api().presets
     if voice is not None and voice.strip():
-        preset = presets.parse_voice_spec(voice.strip())
+        spec = voice.strip()
+        preset = presets.parse_voice_spec(spec)
         if preset is None:
             raise ArgError(f"unknown voice {voice!r}; use one of {', '.join(presets.PRESETS)} or a spec like "
                            "'female;pitch=230'")
     else:
         tts_voice = settings.core_tts().get("voice")
-        preset = settings.resolve_voice(_vocal.ctx(), tts_voice if isinstance(tts_voice, str) else None)
+        spec, preset = settings.resolve_voice_spec(_vocal.ctx(), tts_voice if isinstance(tts_voice, str) else None)
     spd = settings.resolve_speed(speed, preset)
-    eng = _vocal.engine()
+    eng, cfg = _vocal.engine_and_config()
+    opts = _vocal.speech_options(cfg)
     want_mp3, fmt_warning = _want_mp3(None)
     eta = _speak_eta(eng, text)
 
@@ -405,8 +408,8 @@ def _speak(a: dict, **kwargs: Any) -> str:
         out_dir, stem = paths.new_output_stem(text[:60], "speech")
         wav = str(out_dir / f"{stem}.wav")
         try:
-            res = eng.speak_to_wav(text, wav, preset, speed=spd, faithful=faithful, tmp_dir=_tmp_dir(),
-                                   cancel=cancel)
+            res = eng.speak_to_wav(text, wav, spec, speed=spd, faithful=faithful, tmp_dir=_tmp_dir(),
+                                   cancel=cancel, **opts)
         except Exception as e:
             _remove_empty(wav)
             if _vocal.is_error(e, "TextError"):

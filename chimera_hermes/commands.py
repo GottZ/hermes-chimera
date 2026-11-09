@@ -321,7 +321,7 @@ def run_cli(args: Any) -> int:
         if not _vocal.numpy_ok():
             print(_vocal.NUMPY_MISSING, file=sys.stderr)
             return 2
-        eng = _vocal.engine(ctx)
+        eng, cfg = _vocal.engine_and_config(ctx)
         if cmd == "warmup":
             eng.warmup()        # starts the warm-up at once: state "warming" until it ends ready, failed or cold
             deadline = time.monotonic() + 900.0
@@ -339,15 +339,18 @@ def run_cli(args: Any) -> int:
                   f"self-test {'passed' if r.passed else 'FAILED'}: backend {r.backend}, {r.detail}", file=out)
             return 0 if getattr(r, "passed", False) else 1
         if cmd == "check":
-            report = eng.check_score(_read_score(args.score))
+            report = eng.check_score(_read_score(args.score), max_voices=_vocal.score_options(cfg)["max_voices"])
             for i in report.issues:
                 print(f"{i.severity}: {i.path}: {i.message}", file=out)
             print(f"{'ok' if report.ok else 'invalid'}: {report.seconds:.1f} s, {len(report.voices)} voice(s)", file=out)
             return 0 if report.ok else 1
         if cmd == "say":
             text = " ".join(args.text)
-            preset = (_vocal.api().presets.parse_voice_spec(args.voice) if args.voice else
-                      settings.resolve_voice(ctx, settings.core_tts().get("voice")))
+            if args.voice:
+                spec, preset = args.voice.strip(), _vocal.api().presets.parse_voice_spec(args.voice.strip())
+            else:
+                tts_voice = settings.core_tts().get("voice")
+                spec, preset = settings.resolve_voice_spec(ctx, tts_voice if isinstance(tts_voice, str) else None)
             if preset is None:
                 print(f"unknown voice {args.voice!r}", file=sys.stderr)
                 return 2
@@ -356,13 +359,15 @@ def run_cli(args: Any) -> int:
             else:
                 d, stem = paths.new_output_stem(text[:60], "speech")
                 path = str(d / f"{stem}.wav")
-            eng.speak_to_wav(text, path, preset, speed=settings.resolve_speed(None, preset),
-                             faithful=settings.faithful(ctx), tmp_dir=str(paths.tmp_dir(create=True)))
+            eng.speak_to_wav(text, path, spec, speed=settings.resolve_speed(None, preset),
+                             faithful=settings.faithful(ctx), tmp_dir=str(paths.tmp_dir(create=True)),
+                             **_vocal.speech_options(cfg))
             print(path, file=out)
             return 0
         if cmd == "sing":
             score = _read_score(args.score)
-            report = eng.check_score(score)
+            opts = _vocal.score_options(cfg)
+            report = eng.check_score(score, max_voices=opts["max_voices"])
             if not report.ok:
                 for i in report.issues:
                     print(f"{i.severity}: {i.path}: {i.message}", file=sys.stderr)
@@ -373,7 +378,8 @@ def run_cli(args: Any) -> int:
             else:
                 d, stem = paths.new_output_stem(score.get("title") if isinstance(score, dict) else None, "score")
                 out_dir = str(d)
-            res = eng.render_score(score, out_dir, stem, want_mp3=False, tmp_dir=str(paths.tmp_dir(create=True)))
+            res = eng.render_score(score, out_dir, stem, want_mp3=False, tmp_dir=str(paths.tmp_dir(create=True)),
+                                   **opts)
             print(res.path_wav, file=out)
             return 0
         print(f"unknown command {cmd!r}", file=sys.stderr)
