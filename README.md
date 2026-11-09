@@ -74,13 +74,13 @@ Keep the quotes (zsh with `extendedglob` treats `#` specially); `GottZ/hermes-ch
 desktop app use the same id in Capabilities -> Plugins -> Install from repository. Restart Hermes, then run
 `/chimera warmup` (or `hermes chimera warmup`) once: the kernels are compiled into a cache and checked against a
 reference before they are used. If compilation or the check fails, chimera stays on numpy and `/chimera status`
-says why.
+says why; `/chimera warmup` tries again. If the compiled cache goes missing later, the next render compiles it again.
 
 numba has no wheels for macOS x86_64, musl Linux (Alpine) and Android; there chimera keeps using numpy.
 Removing chimera-numba leaves numba in Hermes' Python environment until Hermes rebuilds it, so chimera keeps using
 it; set the plugin setting `backend` to `numpy` to stop.
-`hermes plugins update` skips the companion (it is installed without a `.git` folder); update it with
-`hermes plugins install 'GottZ/hermes-chimera#accel' --force --yes-deps --enable`.
+Installed from the repository as above, the companion has no `.git` folder, so `hermes plugins update` skips it;
+update it with `hermes plugins install 'GottZ/hermes-chimera#accel' --force --yes-deps --enable`.
 
 ## Music
 
@@ -92,12 +92,13 @@ worked examples. Tools:
 |---|---|
 | `chimera_render` | render a score to audio (WAV, or MP3 when ffmpeg is available) |
 | `chimera_check` | validate a score: errors with fixes, syllable alignment, length, estimated render time |
-| `chimera_speak` | speak text in a chosen chimera voice into a file |
-| `chimera_job` | wait for a render that is still running |
+| `chimera_speak` | speak text (up to 4000 characters per call) in a chosen chimera voice into a file |
+| `chimera_job` | wait for a render that is still running, or cancel it |
 
 Hermes gives one tool call a fixed time limit (420 s by default). Longer renders keep running in the background and
-the agent fetches the result with `chimera_job`; jobs belong to the conversation that started them and are kept for
-two hours. Results are files under `<HERMES_HOME>/cache/audio/chimera/`; the agent puts a `MEDIA:` line into its reply
+the agent fetches the result with `chimera_job` (or stops it with `cancel: true`); a job can only be fetched from
+the session that started it (or, on Hermes versions that pass a conversation id, from the same conversation after
+the session id changed), and results are kept for two hours. Results are files under `<HERMES_HOME>/cache/audio/chimera/`; the agent puts a `MEDIA:` line into its reply
 and Hermes delivers the file (a player in the desktop app, an audio file in messaging apps).
 
 Limits per score: 8 voices, 300 s of music, 1200 s summed over the voices; one tempo; one melody line per voice.
@@ -129,8 +130,12 @@ Settings -> Plugins -> chimera (stored under `plugins.entries.chimera.settings`)
 | `music_format` | `auto` | `auto` (MP3 when ffmpeg exists), `wav`, `mp3` |
 | `keep_days` | `7` | delete rendered chimera audio older than this (0 = keep) |
 | `max_voices` | `8` | largest ensemble one score may have |
+| `faithful` | `false` | speak exactly like the original web app's `render text`: no text preparation, no split into phrase windows, the first pitch glides in from 110 Hz, the voice's own random seeds - sample for sample the template's output (each spoken reply then starts with that glide) |
 
-Environment variables `CHIMERA_BACKEND` and `CHIMERA_WORKERS` override `backend` and `workers`.
+Changes take effect with the next render; no restart is needed. A Hermes process that serves several profiles
+renders with the settings of the profile that made the request (the worker pool is shared, `workers` is the last
+value applied). Environment variables `CHIMERA_BACKEND` and `CHIMERA_WORKERS` override `backend` and `workers`.
+The tool `chimera_speak` also takes `faithful` per call.
 `tts.chimera.max_text_length` (Hermes) sets how much text one synthesis call receives (default 4000 characters).
 
 ## Disclosure: what chimera does on your computer
@@ -141,17 +146,22 @@ Environment variables `CHIMERA_BACKEND` and `CHIMERA_WORKERS` override `backend`
   subprocess to make MP3 files of music (`ffmpeg -hide_banner -loglevel error -y -i <wav> -codec:a libmp3lame -q:a 2
   <mp3>`, no stdin, time limit, no console window); without ffmpeg music stays WAV.
 - **Background work.** Long renders continue on a thread in the Hermes process after the tool call returns; results
-  are kept two hours.
-- **Files written.** Only `<HERMES_HOME>/cache/audio/chimera/` (rendered audio, cleaned after `keep_days`) and
-  `<HERMES_HOME>/cache/chimera/` (numba cache, temporary mixer files cleaned after a day).
+  are kept two hours; `chimera_job` with `cancel: true` stops one.
+- **Files written.** Only `<HERMES_HOME>/cache/audio/chimera/` (rendered audio, deleted after `keep_days`) and
+  `<HERMES_HOME>/cache/chimera/`: `numba/` (compiled kernels, one folder per chimera version; the folder in use is
+  kept, folders of other versions are deleted after `keep_days`) and `tmp/` (temporary files of running renders -
+  speech windows, voice tracks, the mix sum - deleted when the render ends, leftovers of an interrupted render after
+  a day). Speech is rendered to disk window by window, so Hermes' memory does not grow with the length of the text.
+  Folders are created readable by the owner only (0700) and rendered files are 0600, like Hermes' own media cache.
 - **Files read outside its own directory.** Hermes' configuration (read-only: `tts`, `timeouts`) and Hermes' install
   record for this plugin (`<HERMES_HOME>/plugins/.install-metadata.json`, to show the right install id for
   chimera-numba). chimera never writes Hermes' configuration; `/chimera voice` stores only the plugin's own setting.
 - **Network, credentials, telemetry.** None.
-- **Security scanner.** `hermes plugins validate` reports `oversized_file` (verdict `safe`) for
-  `chimera_vocal/data/cmudict.txt` (3.3 MB): the CMU pronouncing dictionary is shipped byte-identical to the template
-  so its sha256 can be checked; no faithful plain-text form of it fits under 1 MB, and archives are not allowed in
-  catalog plugins.
+- **Security scanner.** `hermes plugins validate` passes (`security scan — safe`). Hermes' install-time scanner
+  itself lists one medium finding, `oversized_file`, for `chimera_vocal/data/cmudict.txt` (3.3 MB, verdict `safe`):
+  the CMU pronouncing dictionary is shipped decompressed and byte-identical to the template's data (the template
+  ships it as `cmudict.txt.gz`; the sha256 of the decompressed file is in `THIRD_PARTY_NOTICES.md`), so it can be
+  read and checked without unpacking. The catalog would also accept the compressed file.
 
 ## Limits
 
