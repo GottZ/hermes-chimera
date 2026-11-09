@@ -13,6 +13,16 @@ Text copies of the conformance fixtures of the template engine, used by the port
   `planning.json` are snapshots of the template's Rust engine; the phonetics text fixtures record its former
   TypeScript engine. The template checks numbers to 1e-9 relative and audio sample for sample.
 
+### CMU Pronouncing Dictionary
+
+The dictionary pronunciations in the G2P fixtures — the `dict` cases of `phonetics-g2p.json` and
+`phonetics-phrases.json` (and of `tests/vectors/g2p.json`), and every plan built from them in `planning.json` — come from
+the CMU Pronouncing Dictionary as shipped by the template (`public/data/cmudict.txt.gz`):
+"Copyright (C) 1993-2015 Carnegie Mellon University. All rights reserved." It is distributed under a BSD-style
+(2-clause-like) license that permits redistribution with the copyright notice, conditions and disclaimer retained; the
+full text is the template's `public/data/CMUDICT-LICENSE.txt` and is reproduced in this plugin's
+`THIRD_PARTY_NOTICES.md`.
+
 ## Formats
 
 - JSON is compact (no whitespace between tokens), UTF-8, no trailing newline. f64 numbers are written as Python `repr`

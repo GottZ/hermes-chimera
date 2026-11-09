@@ -1,0 +1,22 @@
+[package]
+name = "chimera-s0-track-exporter"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S0 export of private state and control tracks (V3) via the crate copy with read-only accessors"
+
+[workspace]
+
+[dependencies]
+chimera = { path = "../crate-chimera" }
+flate2 = "1"
+serde = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+# same release profile as the upstream workspace (Cargo.toml:9-15)
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = false

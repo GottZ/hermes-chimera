@@ -1,10 +1,10 @@
 [project]
-name = "hermes-plugin-chimera"
+name = "chimera"
 version = "0.1.0"
 description = "Physically modelled singing and speaking voices for Hermes (port of chimera-vocal-synth)"
 requires-python = ">=3.11"
 license = "MIT"
-dependencies = ["numpy>=2.3.2,<3"]          # first cp314 wheels: 2.3.2 (E1-work/runtime/REPORT.md §4.3)
+dependencies = ["numpy>=2.3.2,<3"]          # 2.3.2: first numpy release with CPython 3.14 wheels
 
 [tool.pytest.ini_options]
 pythonpath = [".", "tests"]
