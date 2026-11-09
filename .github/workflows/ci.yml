@@ -1,0 +1,97 @@
+# Platform CI: the fast test suite and tools/platform_smoke.py (real renders through worker processes, numba cache and
+# warm-up, cancel, killed host) on Linux, Windows and macOS. Needs no secrets; network only for PyPI (and the
+# runner's own action/toolcache downloads).
+name: ci
+
+on:
+  push:
+    branches: [main, "ci-*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: ${{ matrix.os }} py${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.14"]
+        numba: ["yes"]
+        include:
+          # Intel macOS: numba publishes no wheels there (accel/pyproject.toml marker), so this cell covers the
+          # numpy-only path of a real installation.
+          - os: macos-26-intel
+            python: "3.14"
+            numba: "no"
+    env:
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIP_NO_INPUT: "1"
+      PYTHONIOENCODING: "utf-8"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      # A virtual environment as Hermes uses one: on Windows its python.exe is a launcher that starts the real
+      # interpreter as a child, which is the process tree the render workers live in on user machines.
+      - name: Install dependencies declared in pyproject.toml and accel/pyproject.toml
+        run: |
+          python -m venv .venv
+          if [ -x .venv/Scripts/python.exe ]; then PY="$PWD/.venv/Scripts/python.exe"; else PY="$PWD/.venv/bin/python"; fi
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          "$PY" - > ci-requirements.txt <<'PYEOF'
+          import tomllib
+          for name in ("pyproject.toml", "accel/pyproject.toml"):
+              with open(name, "rb") as fh:
+                  for dep in tomllib.load(fh)["project"]["dependencies"]:
+                      print(dep)
+          PYEOF
+          cat ci-requirements.txt
+          "$PY" -m pip install -r ci-requirements.txt pytest pytest-xdist
+          "$PY" -m pip list
+          mkdir -p ci-out
+
+      - name: Platform smoke (worker processes, both kernels, cancel, killed host)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 12
+        run: |
+          "$PY" tools/platform_smoke.py --out ci-out/smoke --expect-numba ${{ matrix.numba }} 2>&1 | tee ci-out/smoke.log
+
+      # The fast suite (slow, lab and hermes tests skip themselves) minus the real-engine acoustic measurements in
+      # tests/measure ("[real...]" cases): those render seconds of audio in-process on the numpy kernel, about 35 of
+      # the suite's 42 CPU minutes, which no 20-minute job holds. They are platform-independent numerics; the smoke
+      # step above checks real renders against the template on every platform instead. pytest-xdist spreads the rest
+      # over the runner's CPUs.
+      - name: Test suite (fast, without the real-engine measurements in tests/measure)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 14
+        run: |
+          "$PY" -m pytest -q -p no:cacheprovider --collect-only tests/measure | tr -d '\r' | grep '\[real' | sed 's/^/--deselect=/' > ci-out/deselect.txt || true
+          echo "deselected: $(wc -l < ci-out/deselect.txt)"
+          "$PY" -m pytest -q -p no:cacheprovider -n auto -rfE --durations=30 --junitxml=ci-out/junit.xml @ci-out/deselect.txt 2>&1 | tee ci-out/pytest.log
+
+      - name: Upload logs and smoke WAVs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: ci-${{ matrix.os }}-py${{ matrix.python }}
+          path: ci-out/
+          retention-days: 3
+          if-no-files-found: warn
