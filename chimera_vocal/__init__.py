@@ -236,16 +236,9 @@ class Engine:
         """Kernel for one request. ``backend`` is the setting of whoever makes the request (None = the engine's
         current setting). One engine serves every Hermes profile of a process and its own setting is the one applied
         last, so a request that names its backend is not steered by another profile: ``numpy`` stays numpy, and
-        ``auto``/``numba`` render with numba once it is warm even while the engine's setting is ``numpy``."""
-        sched = self.scheduler
-        if backend is None:
-            return sched.choose_kernel()
-        if backend == "numpy":
-            return "numpy"
-        with sched._lock:
-            if sched.backend != "numpy":
-                return sched.choose_kernel()
-            return "numba" if sched.numba_state() == "ready" and not sched._spawn_failed else "numpy"
+        ``auto``/``numba`` render with numba once it is warm even while the engine's setting is ``numpy`` (until then
+        with numpy, while such a request starts the warm-up)."""
+        return self.scheduler.choose_kernel(backend)
 
     def _submit_all(self, req, jobs, sinks, ev: threading.Event) -> list:
         out = []

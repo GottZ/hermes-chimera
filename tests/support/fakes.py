@@ -818,8 +818,11 @@ def handshake(root: Path = REPO_ROOT, cache_base: str | None = None) -> dict:
 
 
 def spawn_worker(stderr_path: str | os.PathLike, *, root: Path = REPO_ROOT, cache_base: str | None = None,
-                 env: Mapping[str, str] | None = None, flags: Sequence[str] = ("-I", "-S", "-u")):
-    """Start ``python -I -S -u -c BOOTSTRAP`` like the scheduler and send the handshake; returns the Popen."""
+                 env: Mapping[str, str] | None = None, flags: Sequence[str] = ("-I", "-S", "-u"),
+                 read_hello: bool = True):
+    """Start ``python -I -S -u -c BOOTSTRAP`` like the scheduler and send the handshake; returns the Popen. With
+    ``read_hello`` the worker's first frame (its hello) is read here and kept as ``p.hello``, so the next frame on
+    ``p.stdout`` is the answer to the first request."""
     import subprocess
     from chimera_vocal import worker
     e = dict(os.environ)
@@ -831,4 +834,7 @@ def spawn_worker(stderr_path: str | os.PathLike, *, root: Path = REPO_ROOT, cach
     err.close()
     p.stdin.write((json.dumps(handshake(root, cache_base)) + "\n").encode("utf-8"))
     p.stdin.flush()
+    p.hello = None
+    if read_hello:
+        p.hello, _ = worker.read_frame(p.stdout)
     return p

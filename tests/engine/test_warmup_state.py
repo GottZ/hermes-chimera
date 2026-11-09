@@ -150,6 +150,43 @@ def test_engine_warmup_requests_a_retry(make_engine, monkeypatch):
     assert seen == [{"retry_failed": True}]
 
 
+
+def test_request_policy_auto_on_a_numpy_scheduler(stub_warm, sched):
+    """K-S5b.9: process setting numpy (another profile applied last), request ``auto``: numpy at first while the
+    request's policy starts the warm-up, numba once the marker is valid. Requests without a policy keep the
+    scheduler's numpy and start nothing. Red proof: RenderScheduler.choose_kernel took no policy."""
+    def ok():
+        stub_warm["marker"] = True
+        return _warm_reply(dict(MARKER))
+    stub_warm["reply"] = ok
+    sched.set_backend("numpy")
+    assert sched.choose_kernel() == "numpy" and sched.choose_kernel("numpy") == "numpy"
+    assert stub_warm["warms"] == 0, "numpy (own setting or named) starts no warm-up"
+    assert sched.choose_kernel("auto") == "numpy"
+    assert _settled(sched) and stub_warm["warms"] == 1 and sched.numba_state() == "ready"
+    assert sched.choose_kernel("auto") == "numba" and sched.choose_kernel("numba") == "numba"
+    assert sched.choose_kernel() == "numpy" and sched.choose_kernel("numpy") == "numpy"
+    assert stub_warm["warms"] == 1
+
+
+def test_engine_kernel_choice_is_the_schedulers(make_engine, monkeypatch):
+    """K-S5b.10: Engine.choose_kernel hands the request's policy to the scheduler and reads none of its internals
+    (lock, spawn state). Red proof: the engine took the scheduler's lock and read its fields itself."""
+    eng = make_engine(workers=2, backend="numpy")
+    seen = []
+
+    class OnlyChoice:
+        def choose_kernel(self, backend=None):
+            seen.append(backend)
+            return "numba"
+
+        def shutdown(self):
+            pass
+
+    monkeypatch.setattr(eng, "scheduler", OnlyChoice())
+    assert [eng.choose_kernel(b) for b in (None, "auto", "numba", "numpy")] == ["numba"] * 4
+    assert seen == [None, "auto", "numba", "numpy"]
+
 def _maint_alive(s) -> bool:
     m = s._maint
     return m is not None and m.is_alive()
