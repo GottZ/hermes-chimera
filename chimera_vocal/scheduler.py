@@ -512,7 +512,9 @@ class RenderScheduler:
                         secs = float(msg.get("seconds", time.perf_counter() - t0))
                         self._note_rtf(task.req.kernel, secs, task.job.n_out)
                         self._release(w)
-                        return self._finish(task, result=RenderStats(task.job.n_out, secs, task.req.kernel, w.pid))
+                        # the interpreter that rendered: behind a Windows venv launcher it is a child of w.pid
+                        pid = msg.get("pid") if isinstance(msg.get("pid"), int) else w.pid
+                        return self._finish(task, result=RenderStats(task.job.n_out, secs, task.req.kernel, pid))
                     elif msg.get("ok") is False:
                         self._release(w)
                         return self._finish(task, error=ChimeraError(f"render failed: {msg.get('error')}"))
