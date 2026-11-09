@@ -1,10 +1,6 @@
-"""Temporary CI diagnostic: can this platform start one render worker and get a selftest reply?
+"""Temporary CI diagnostic: why does a render worker not answer on this platform? Bisects the worker's pipe set-up
+in small child processes, each with a deadline, then starts the real worker with faulthandler stack dumps."""
 
-Tries the interpreter as Hermes would start it (sys.executable, a venv launcher on Windows) and the base interpreter
-(sys._base_executable). Each attempt has a deadline; on a hang it prints the worker's stderr tail, the process tree
-and every thread of this process, then kills the worker."""
-
-import faulthandler
 import json
 import os
 import subprocess
@@ -15,70 +11,135 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
+FLAGS = ["-I", "-S", "-u"]
+
+CASES = {
+    "A plain echo": r"""
+import sys
+line = sys.stdin.buffer.readline()
+sys.stdout.buffer.write(line); sys.stdout.buffer.flush()
+""",
+    "B dup(1) + dup2(2, 1), write on the dup": r"""
+import os, sys
+line = sys.stdin.buffer.readline()
+p = os.fdopen(os.dup(1), "wb")
+os.dup2(2, 1)
+p.write(line); p.flush()
+""",
+    "C reader thread on stdin, write from main": r"""
+import os, sys, threading, time
+line = sys.stdin.buffer.readline()
+p = os.fdopen(os.dup(1), "wb")
+os.dup2(2, 1)
+def watch():
+    sys.stdin.buffer.read(1)
+threading.Thread(target=watch, daemon=True).start()
+time.sleep(0.5)
+p.write(line); p.flush()
+""",
+    "D reader thread blocked in readinto, write from main": r"""
+import os, sys, threading, time
+line = sys.stdin.buffer.readline()
+p = os.fdopen(os.dup(1), "wb")
+os.dup2(2, 1)
+def watch():
+    buf = bytearray(8)
+    sys.stdin.buffer.readinto(memoryview(buf))
+threading.Thread(target=watch, daemon=True).start()
+time.sleep(0.5)
+p.write(line); p.flush()
+""",
+    "E no dup2, reader thread, write on sys.stdout.buffer": r"""
+import sys, threading, time
+line = sys.stdin.buffer.readline()
+def watch():
+    sys.stdin.buffer.read(1)
+threading.Thread(target=watch, daemon=True).start()
+time.sleep(0.5)
+sys.stdout.buffer.write(line); sys.stdout.buffer.flush()
+""",
+    "F reader thread on a raw (unbuffered) stdin, write from main": r"""
+import os, sys, threading, time
+line = sys.stdin.buffer.readline()
+p = os.fdopen(os.dup(1), "wb")
+os.dup2(2, 1)
+raw = os.fdopen(os.dup(0), "rb", buffering=0)
+def watch():
+    raw.read(1)
+threading.Thread(target=watch, daemon=True).start()
+time.sleep(0.5)
+p.write(line); p.flush()
+""",
+}
 
 
-def tree():
-    if os.name == "nt":
-        ps = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' } | "
-              "ForEach-Object { \"$($_.ProcessId) parent=$($_.ParentProcessId) $($_.Name) "
-              "$($_.CommandLine.Substring(0, [Math]::Min(90, $_.CommandLine.Length)))\" }")
-        return subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True).stdout
-    return subprocess.run(["ps", "-ax", "-o", "pid,ppid,stat,command"], capture_output=True, text=True).stdout
+def run_case(name, code, exe):
+    p = subprocess.Popen([exe, *FLAGS, "-c", code], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, close_fds=True)
+    box = {}
+
+    def go():
+        p.stdin.write(b'{"hello": 1}\n')
+        p.stdin.flush()
+        box["out"] = p.stdout.readline()
+
+    th = threading.Thread(target=go, daemon=True)
+    t0 = time.monotonic()
+    th.start()
+    th.join(20)
+    ok = not th.is_alive() and box.get("out") == b'{"hello": 1}\n'
+    print(f"{'OK  ' if ok else 'HANG' if th.is_alive() else 'BAD '} {name} ({time.monotonic() - t0:.2f} s) "
+          f"out={box.get('out')!r}", flush=True)
+    p.kill()
+    try:
+        err = p.communicate(timeout=10)[1]
+    except Exception as e:  # noqa: BLE001
+        err = repr(e).encode()
+    if err.strip():
+        print("   stderr:", err.decode("utf-8", "replace")[-800:], flush=True)
 
 
-def attempt(label, exe, op):
+def real_worker(exe):
     import chimera_vocal.scheduler as S
-    print(f"--- {label}: {exe} op={op}", flush=True)
+    import chimera_vocal.worker as W
+    orig = W.BOOTSTRAP
+    W.BOOTSTRAP = ("import faulthandler, sys\nfaulthandler.dump_traceback_later(8, repeat=True, file=sys.stderr)\n"
+                   + orig)
     old = sys.executable
     sys.executable = exe
     try:
         sched = S.RenderScheduler(workers=2, cache_base=str(Path.cwd() / "probe-cache"), root=str(REPO))
+        w = S._Worker(sched)
         box = {}
-        t0 = time.monotonic()
 
-        def run():
+        def go():
             try:
-                w = S._Worker(sched)
-                box["w"] = w
-                print(f"spawned pid {w.pid} after {time.monotonic() - t0:.2f} s", flush=True)
-                w.send({"req": "probe", "op": op, "kernel": "numpy"})
+                w.send({"req": "probe", "op": "selftest", "kernel": "numpy"})
                 while True:
                     msg, _ = w.read()
                     if msg.get("req") == "probe":
                         box["msg"] = msg
-                        break
+                        return
             except BaseException as e:  # noqa: BLE001
                 box["exc"] = repr(e)
 
-        th = threading.Thread(target=run, daemon=True)
+        th = threading.Thread(target=go, daemon=True)
         th.start()
-        th.join(90)
-        w = box.get("w")
-        if th.is_alive():
-            print(f"HANG after {time.monotonic() - t0:.1f} s; worker alive={w.alive() if w else None}", flush=True)
-            if w:
-                print("worker stderr tail:", w.tail(), flush=True)
-            print(tree(), flush=True)
-            faulthandler.dump_traceback(all_threads=True)
-        else:
-            msg = box.get("msg") or {}
-            print(f"reply after {time.monotonic() - t0:.2f} s: exc={box.get('exc')} "
-                  f"msg={json.dumps(msg)[:300]}", flush=True)
-            if w:
-                print("worker stderr tail:", w.tail(), flush=True)
-        if w:
-            w.kill()
-            print(f"killed; pid state poll={w.proc.poll()}", flush=True)
+        th.join(30)
+        print(f"real worker via {exe}: {'HANG' if th.is_alive() else 'reply'} {json.dumps(box)[:300]}", flush=True)
+        time.sleep(1.0)
+        print("worker stderr:\n" + "\n".join(w.err_tail), flush=True)
+        w.kill()
     finally:
         sys.executable = old
+        W.BOOTSTRAP = orig
 
 
 if __name__ == "__main__":
-    print(json.dumps({"executable": sys.executable, "base": getattr(sys, "_base_executable", None),
-                      "prefix": sys.prefix, "base_prefix": sys.base_prefix}), flush=True)
-    for op in ("selftest",):
-        attempt("as started", sys.executable, op)
-        base = getattr(sys, "_base_executable", None)
-        if base and os.path.normcase(base) != os.path.normcase(sys.executable):
-            attempt("base interpreter", base, op)
-    print(tree(), flush=True)
+    base = getattr(sys, "_base_executable", None) or sys.executable
+    print(json.dumps({"executable": sys.executable, "base": base, "platform": sys.platform}), flush=True)
+    for exe in dict.fromkeys([sys.executable, base]):
+        print(f"=== interpreter {exe}", flush=True)
+        for name, code in CASES.items():
+            run_case(name, code, exe)
+    real_worker(sys.executable)

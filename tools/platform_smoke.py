@@ -233,6 +233,31 @@ def tmp_leftovers(*dirs: Path) -> list[str]:
 
 # --- phases ----------------------------------------------------------------------------------------------------
 
+def phase_probe(rep: Report, cache: Path) -> bool:
+    """One selftest through one fresh render worker, with a deadline: a platform whose workers do not answer fails
+    here in two minutes instead of hanging every later phase."""
+    eng = make_engine("numpy", cache, 2)
+    box: dict[str, Any] = {}
+
+    def go() -> None:
+        try:
+            box["res"] = eng.scheduler.selftest("numpy")
+        except BaseException as e:  # noqa: BLE001
+            box["exc"] = e
+
+    t0 = time.monotonic()
+    th = threading.Thread(target=go, daemon=True)
+    th.start()
+    th.join(120)
+    res = box.get("res")
+    ok = not th.is_alive() and res is not None and getattr(res, "passed", False)
+    rep.data["probe_s"] = round(time.monotonic() - t0, 2)
+    rep.check("probe: a render worker answers a selftest within 120 s", ok,
+              "no answer" if th.is_alive() else repr(box.get("exc") or res))
+    eng.shutdown()
+    return ok
+
+
 def phase_warm(rep: Report, cache: Path) -> Any:
     """numba cold warm-up (two engines, one cache) then warm (marker removed, cache kept). Returns the engine."""
     from chimera_vocal.dsp.backend import MARKER_NAME, numba_cache_dir
@@ -549,6 +574,8 @@ def main() -> int:
     t_start = time.monotonic()
     try:
         kernels = ["numpy"] + (["numba"] if has_numba else [])
+        if not phase_probe(rep, cache):
+            kernels = []                         # every later phase would wait on the same dead worker path
         for kernel in kernels:
             keep[kernel] = {}
             eng = None
