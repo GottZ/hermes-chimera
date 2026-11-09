@@ -5,9 +5,14 @@ Per case: grid size and regions exact; grid d/area/s, the 16 scalars (incl. cont
 outlines present in the case and resample(18, 18) (lengths, areas, minima) <= 1e-9 relative with floor 1e-6 (T2).
 """
 
+import json
+from pathlib import Path
+
 import pytest
 
 import support
+
+EXTRA = Path(__file__).parent / "data" / "geometry-sort-postures.json"
 
 
 def _run(c2, impl):
@@ -47,3 +52,21 @@ def test_golden_geometry_coverage(key):
     assert present >= 1, key
     regions = {int(r[0]) for c in cases for r in c["grid"]}
     assert regions >= {1, 2, 3}
+
+
+@pytest.mark.parametrize("impl_name", ["GEOMETRY_REF_CPYTHON", "GEOMETRY_VEC"])
+def test_sort_sensitive_postures(c2, impl_name):
+    """K-2.1/K-2.2 extension: the 114 golden postures never depend on the order of the fan-ray crossings (measured in
+    S1: a port without the sort matches all 114, but differs on 615 of 20 000 random postures by up to 32 cm^2).
+    Three such postures with the template's own output (tests/control/data/geometry-sort-postures.json), T2."""
+    from chimera_vocal.control import geometry
+
+    impl = getattr(geometry, impl_name)
+    doc = json.loads(EXTRA.read_text(encoding="utf-8"))
+    assert {c["body"] for c in doc["cases"]} == {"male", "female", "child"}
+    failures = []
+    for i, case in enumerate(doc["cases"]):
+        w, problems = c2.check_golden_case(impl, case)
+        if problems or not w < c2.T2_TOL:
+            failures.append(f"case {i} ({case['body']}): worst {w:.3e} {problems}")
+    assert not failures, failures
