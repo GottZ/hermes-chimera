@@ -88,12 +88,7 @@ def voice_files(tmp_path_factory):
              for p, f0, s in ((srcs[0], "220.0", "1"), (srcs[1], "147.0", "2"))]
     for p in procs:
         assert p.wait(timeout=600) == 0
-    files = []
-    for i in range(8):
-        f = d / f"voice-{i}.f32"
-        shutil.copyfile(srcs[i % 2], f)
-        files.append(str(f))
-    return d, files
+    return d, [srcs[i % 2] for i in range(8)]     # eight voices from two sources; each test copies its own
 
 
 def _fresh_copies(src_files: list[str], into: Path) -> list[str]:
