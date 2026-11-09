@@ -146,10 +146,10 @@ def test_install_source(tmp_path, fake_hermes):
         git = root / ".git"
         git.mkdir()
         (git / "config").write_text('[core]\n\tbare = false\n[remote "upstream"]\n\turl = https://example.org/x/y\n'
-                                    '[remote "origin"]\n\turl = https://alice:ghp_SECRET123@github.com/alice/chimera-fork.git\n'
+                                    '[remote "origin"]\n\turl = https://alice:TOPSECRET@github.com/alice/chimera-fork.git\n'
                                     '\tfetch = +refs/heads/*:refs/remotes/origin/*\n', encoding="utf-8")
         assert cmd.install_source() == "alice/chimera-fork"
-        assert "ghp_SECRET123" not in cmd.companion_hint()
+        assert "TOPSECRET" not in cmd.companion_hint()
 
         sidecar = root.parent / ".install-metadata.json"
         sidecar.write_text(json.dumps({"chimera": {"pinned": False, "revision": "0" * 40,
