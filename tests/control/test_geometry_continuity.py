@@ -263,41 +263,59 @@ def test_geometry_continuity_known_jump_protruded_tuck(c2):
     assert protruded_tuck_jumps(c2, ["male"], [0.2], [0.5], 400) == []
 
 
-def _slew_limits(old, new_area, k2, dt):
-    """Allowed change of one section in one block (human_airway.rs:194-251)."""
-    open_r, gain, seal_r = 45.0 * k2, 40.0, 5.0 * k2
+def _close_rate(old, k2):
+    """close_r of HumanAirway::commit (human_airway.rs:205-217)."""
+    open_r, seal_r = 45.0 * k2, 5.0 * k2
     lo, hi, ease = 0.03 * k2, 0.4 * k2, 0.03 * k2
     if old < ease:
-        close = seal_r * math.sqrt(max(0.0, old) / ease)
-    else:
-        u = 0.0 if old <= lo else 1.0 if old >= hi else (old - lo) / (hi - lo)
-        close = seal_r + (open_r - seal_r) * u * u * (3.0 - 2.0 * u)
-    return (open_r + gain * new_area) * dt, (close + gain * old) * dt
+        return seal_r * math.sqrt(max(0.0, old) / ease)
+    u = 0.0 if old <= lo else 1.0 if old >= hi else (old - lo) / (hi - lo)
+    return seal_r + (open_r - seal_r) * u * u * (3.0 - 2.0 * u)
 
 
-def _check_slew(track, k2, dt):
-    """Every block-to-block change within the limits (1e-12 slack); returns how many changes sat at the limit."""
-    at_limit, bad = 0, []
-    for key in ("tube_area", "tube_min"):
-        a = getattr(track, key)
-        for b in range(1, a.shape[0]):
-            for i in range(a.shape[1]):
-                old, new = float(a[b - 1, i]), float(a[b, i])
-                up, down = _slew_limits(old, new, k2, dt)
-                d = new - old
-                if d > up * (1 + 1e-12) + 1e-15 or d < -down * (1 + 1e-12) - 1e-15:
-                    bad.append(f"{key} block {b} section {i}: {old:.6f} -> {new:.6f}")
-                elif abs(d - up) <= 1e-12 * max(1.0, up) or abs(d + down) <= 1e-12 * max(1.0, down):
-                    at_limit += 1
-        if key == "tube_min":
-            assert (track.tube_min <= track.tube_area).all() and (track.tube_min >= 0.0).all()
+def _slewed(cur, old, k2, dt):
+    """One section through the slew limit (human_airway.rs:219-231); `cur` = the unclamped geometry value."""
+    d = cur - old
+    if d > 0.0:
+        lim = (45.0 * k2 + 40.0 * cur) * dt
+        return old + lim if d > lim else cur
+    lim = (_close_rate(old, k2) + 40.0 * old) * dt
+    return old - lim if d < -lim else cur
+
+
+def _run_slew_oracle(c2, model, body, label, n_blocks):
+    """Step the model block by block; recompute the step's unclamped section areas/minima from the articulation
+    it ended with (after a contact correction that is the re-applied one) and check the track row against the
+    template's slew rule applied to the previous row. Returns how many sections the limiter changed."""
+    from chimera_vocal.control.geometry import GEOMETRY_VEC
+
+    e = c2.v2_entry(label)
+    k2 = body.scale * body.scale
+    prev = None
+    clamped, bad = 0, []
+    for b in range(n_blocks):
+        row = model.advance(1)
+        geo = c2.run_geometry(GEOMETRY_VEC, body, model.artic.x.copy(), e["n_ph"], e["n_or"])["resample"]
+        cur_a = np.concatenate([geo["ph"], geo["or"]])
+        cur_m = np.concatenate([geo["phMin"], geo["orMin"]])
+        if prev is not None:
+            for i in range(cur_a.size):
+                a = _slewed(float(cur_a[i]), float(prev.tube_area[0, i]), k2, model.dt)
+                m = _slewed(float(cur_m[i]), float(prev.tube_min[0, i]), k2, model.dt)
+                m = max(0.0, min(m, a))
+                got_a, got_m = float(row.tube_area[0, i]), float(row.tube_min[0, i])
+                if c2.worst_rel([got_a, got_m], [a, m], 1e-9) > 1e-12:
+                    bad.append(f"block {b} section {i}: area {got_a!r} vs {a!r}, min {got_m!r} vs {m!r}")
+                clamped += a != float(cur_a[i])
+        prev = row
     assert not bad, bad[:10]
-    return at_limit
+    return clamped
 
 
 def test_track_slew_limit_holds_through_the_known_jump(c2):
-    """K-2.10 (control): the protruded lower lip tucks through the template's known geometric jump; the control
-    track spreads it under the slew limit (red when the limit is off)."""
+    """K-2.10 (control): the protruded lower lip tucks through the template's known geometric jump; every row of
+    the control track equals the template's slew rule (human_airway.rs:187-253) applied to the previous row and
+    the step's unclamped geometry, and the limiter engages (red when the limit is off)."""
     from chimera_vocal.control.geometry import GEOMETRY_VEC
     from chimera_vocal.control.track import ControlModel
     from chimera_vocal.core.body import BODY_MALE
@@ -306,8 +324,7 @@ def test_track_slew_limit_holds_through_the_known_jump(c2):
     m.set_articulation({"jaw": 0.3, "lipAp": 0.05, "lipProt": 0.2, "lipWidth": 0.5})
     m.advance(150)
     m.set_articulation({"labiodental": 1.0})
-    track = m.advance(200)
-    assert _check_slew(track, 1.0, m.dt) > 0
+    assert _run_slew_oracle(c2, m, BODY_MALE, "male", 120) > 0
 
 
 def test_track_slew_limit_holds_for_fast_vowel_changes(c2):
@@ -318,10 +335,9 @@ def test_track_slew_limit_holds_for_fast_vowel_changes(c2):
     for label in ("male", "child"):
         body = c2.body_of(label)
         m = ControlModel(body, c2.tract_index(label), geometry=GEOMETRY_VEC)
-        parts = []
+        clamped = 0
         for patch in ({k: VOWELS[label]["i"][k] for k in VOWEL_KEYS}, {k: VOWELS[label]["ɑ"][k] for k in VOWEL_KEYS},
                       {"lipAp": -0.4}, {"lipAp": 2.0}):
             m.set_articulation(patch)
-            parts.append(m.advance(90))
-        track = c2.concat_chunks(parts)
-        assert _check_slew(track, body.scale * body.scale, m.dt) > 0, label
+            clamped += _run_slew_oracle(c2, m, body, label, 60)
+        assert clamped > 0, label

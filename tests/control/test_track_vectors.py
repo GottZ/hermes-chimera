@@ -140,8 +140,8 @@ def test_track_full_lab(c2, lab_refs, scenario):
         for k, (v, r) in state.items():
             if c2.worst_rel([v], [blk[k][r]], c2.T2_FLOOR) >= c2.T2_TOL:
                 f.append(f"block {b}: {k} {v!r} vs {blk[k][r]!r}")
-        for k, arr in (("artic_x", model.artic.x), ("artic_v", model.artic.v)):
-            if c2.worst_rel(arr, blk[k][b], c2.T2_FLOOR) >= c2.T2_TOL:
+        for k, arr, floor in (("artic_x", model.artic.x, c2.T2_FLOOR), ("artic_v", model.artic.v, 1e-3)):
+            if c2.worst_rel(arr, blk[k][b], floor) >= c2.T2_TOL:       # velocities: cm/s, decay to 0 (libm ulps)
                 f.append(f"block {b}: {k}")
         failures += f
         if len(failures) > 20:
