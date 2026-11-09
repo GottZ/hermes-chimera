@@ -23,7 +23,9 @@ Use it for choirs, canons, duets, chants, sung greetings and spoken lines over a
    your reply, outside any code block or quote.** That line is what delivers the audio; without it the user gets
    nothing. Do not add `[[audio_as_voice]]` for music.
 5. If the result says `"status": "running"`, call `chimera_job` with the `job_id` (repeat until `done`). Long scores
-   on a computer without the numba accelerator take a while; tell the user it is rendering.
+   on a computer without the numba accelerator take a while; tell the user it is rendering. `chimera_job` with
+   `cancel: true` stops a render the user no longer wants; `wait_s: 0` returns a job id at once instead of waiting.
+   `chimera_speak` reads at most 4000 characters per call; split longer texts into several calls.
 
 ## Score format
 

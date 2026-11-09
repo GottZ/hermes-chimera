@@ -192,7 +192,7 @@ for the same input. "Identical" below means: the same length, and no sample diff
   `normalize` is `false` and every voice has `"seed": 0` (the first voice uses the original's seeds anyway): each
   voice sings what `chimera render notes` sings for the same notes and lyrics, without a single differing 16-bit
   sample (measured on single melodies and a two-voice duet).
-- Speech in a faithful mode (see Settings): the whole text in one piece, starting with the original's glide up from
+- Speech with the `faithful` setting (or `faithful: true` on `chimera_speak`, see Settings): the whole text in one piece, starting with the original's glide up from
   110 Hz, as `chimera render text` does. Measured on three new sentences that text preparation leaves unchanged, in
   the male, female and child voices: same length, largest difference 5e-9 of the peak.
 - The pronouncing dictionary (decompressed from the original's `cmudict.txt.gz`) and the phoneme tables are the
