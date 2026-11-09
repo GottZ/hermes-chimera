@@ -162,3 +162,26 @@ def test_session_lifecycle_with_hermes(hermes_lab):
     assert "0.22.6" in out["slash_legacy"] and "chimera_job" in out["slash_legacy"], out
     assert out["finalize_j1"] == "cancelled" and out["reset_jr1"] == "cancelled", out
     assert out["rebuild_jr2"] == "running", out
+
+
+SCAN_PROBE = r"""
+import json, sys
+from pathlib import Path
+from tools.plugin_guard import scan_plugin
+r = scan_plugin(Path(sys.argv[1]))
+print(json.dumps({"verdict": r.verdict, "kinds": sorted({f.pattern_id for f in r.findings}),
+                  "severities": sorted({f.severity for f in r.findings})}))
+"""
+
+
+# The README's disclosure names every kind of note Hermes' install-time scanner reports for this tree
+# (red proof R2A-24: two of ten kinds named)
+def test_install_scanner_notes_disclosed(hermes_lab):
+    r = subprocess.run([str(hermes_lab.python), "-c", SCAN_PROBE, str(c5fakes.REPO_ROOT)], env=hermes_lab.env,
+                       capture_output=True, text=True, timeout=300, cwd=str(hermes_lab.tmp))
+    assert r.returncode == 0, r.stderr[-4000:]
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["verdict"] == "safe" and out["severities"] == ["medium"], out
+    readme = (c5fakes.REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    missing = [k for k in out["kinds"] if f"`{k}`" not in readme]
+    assert missing == [], f"README does not name these scanner notes: {missing}"

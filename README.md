@@ -97,9 +97,11 @@ worked examples. Tools:
 | `chimera_job` | wait for a render that is still running, or cancel it |
 
 Hermes gives one tool call a fixed time limit (420 s by default). Longer renders keep running in the background and
-the agent fetches the result with `chimera_job` (or stops it with `cancel: true`); a job can only be fetched from
-the session that started it (or, on Hermes versions that pass a conversation id, from the same conversation after
-the session id changed), and results are kept for two hours. Results are files under
+the agent fetches the result with `chimera_job` (or stops it with `cancel: true`). A render belongs to the
+conversation that started it, also after Hermes compressed the conversation's context; other conversations cannot
+fetch or stop it. When the conversation's session ends (`/new`, leaving the CLI, closing the session in the desktop
+app, stopping the gateway) its unfinished renders stop; `/chimera cancel` stops them by hand (Hermes 0.22.6 or
+newer; on older Hermes ask the agent to cancel). Finished results are kept for two hours. Results are files under
 `<HERMES_HOME>/cache/audio/chimera/`; the agent puts a `MEDIA:` line into its reply and Hermes delivers the file (a
 player in the desktop app, an audio file in messaging apps).
 
@@ -134,11 +136,12 @@ Settings -> Plugins -> chimera (stored under `plugins.entries.chimera.settings`)
 | `music_format` | `auto` | `auto` (MP3 when ffmpeg exists), `wav`, `mp3` |
 | `keep_days` | `7` | delete rendered chimera audio older than this (0 = keep) |
 | `max_voices` | `8` | largest ensemble one score may have |
-| `faithful` | `false` | speak exactly like the original web app's `render text`: no text preparation, no split into phrase windows, the first pitch glides in from 110 Hz, the voice's own random seeds - sample for sample the template's output (each spoken reply then starts with that glide) |
+| `faithful` | `false` | speak like the original's command-line renderer `chimera render text`: no text preparation, no split into phrase windows, the first pitch glides in from 110 Hz, the voice's own random seeds - sample for sample that command's output (each spoken reply then starts with that glide). The original's web app runs the same engine with other defaults (male 110 Hz instead of 112 Hz, child 260 Hz instead of 250 Hz) at the browser's sample rate and volume, so it sounds slightly different |
 
 Changes take effect with the next render; no restart is needed. A Hermes process that serves several profiles
-renders with the settings of the profile that made the request (the worker pool is shared, `workers` is the last
-value applied). Environment variables `CHIMERA_BACKEND` and `CHIMERA_WORKERS` override `backend` and `workers`.
+renders each request with the settings of the profile that made it, fixed when the request starts (the worker pool
+is shared, `workers` is the last value applied). Environment variables `CHIMERA_BACKEND` and `CHIMERA_WORKERS`
+override `backend` and `workers`.
 The tool `chimera_speak` also takes `faithful` per call.
 `tts.chimera.max_text_length` (Hermes) sets how much text one synthesis call receives (default 4000 characters).
 
@@ -150,23 +153,34 @@ The tool `chimera_speak` also takes `faithful` per call.
   subprocess to make MP3 files of music (`ffmpeg -hide_banner -loglevel error -y -i <wav> -codec:a libmp3lame -q:a 2
   <mp3>`, no stdin, time limit, no console window); without ffmpeg music stays WAV.
 - **Background work.** Long renders continue on a thread in the Hermes process after the tool call returns; results
-  are kept two hours; `chimera_job` with `cancel: true` stops one.
+  are kept two hours. A render stops when its session ends (chimera registers the hooks `on_session_finalize` and
+  `on_session_reset`), with `chimera_job` and `cancel: true`, or with `/chimera cancel`.
 - **Files written.** Only `<HERMES_HOME>/cache/audio/chimera/` (rendered audio, deleted after `keep_days`) and
   `<HERMES_HOME>/cache/chimera/`: `numba/` (compiled kernels, one folder per chimera version; the folder in use is
   kept, folders of other versions are deleted after `keep_days`) and `tmp/` (temporary files of running renders -
   speech windows, voice tracks, the mix sum - deleted when the render ends, leftovers of an interrupted render after
   a day). Speech is rendered to disk window by window, so Hermes' memory does not grow with the length of the text.
   Folders are created readable by the owner only (0700) and rendered files are 0600, like Hermes' own media cache.
-- **Files read outside its own directory.** Hermes' configuration (read-only: `tts`, `timeouts`) and Hermes' install
+- **Files read outside its own directory.** Hermes' configuration (read-only: `tts`, `timeouts`), Hermes' install
   record for this plugin (`<HERMES_HOME>/plugins/.install-metadata.json`, to show the right install id for
-  chimera-numba). chimera never writes Hermes' configuration; `/chimera voice` stores only the plugin's own setting.
+  chimera-numba) and Hermes' session store (`<HERMES_HOME>/state.db`, read-only through Hermes' own `SessionDB`,
+  only to tell whether a session continues another one after a context compression). chimera never writes Hermes'
+  configuration; `/chimera voice` stores only the plugin's own setting.
 - **Network, credentials, telemetry.** None.
 - **Security scanner.** `hermes plugins validate` passes (`security scan — safe`). Hermes' install-time scanner
-  itself lists only medium-severity notes (verdict `safe`): subprocess calls (render workers, ffmpeg, tests) and
-  `oversized_file` for `chimera_vocal/data/cmudict.txt` (3.3 MB). The CMU pronouncing dictionary is shipped
-  decompressed and byte-identical to the template's data (the template ships it as `cmudict.txt.gz`; the sha256 of
-  the decompressed file is in `THIRD_PARTY_NOTICES.md`), so it can be read and checked without unpacking. The
-  catalog would also accept the compressed file.
+  itself reports only medium-severity notes (verdict `safe`). In the code Hermes runs: `python_subprocess` (the
+  render workers in `chimera_vocal/scheduler.py`, ffmpeg in `chimera_hermes/media.py`), `hex_encoded_string` and
+  `unicode_escape_chain` (the table of whitespace characters in `chimera_vocal/text/english.py`, written as
+  escapes) and `oversized_file` (`chimera_vocal/data/cmudict.txt`, 3.3 MB, see below). Everything else is in the
+  test suite and the developer tools: their subprocess calls (`python_subprocess`; `git` and `rustc` in
+  `tools/vector_export`), hostile file names (parent-directory paths, the system's password file) that the tests
+  check are made harmless (`path_traversal`, `system_passwd_access`), the worker tests' check of the environment
+  a worker sees (`dump_all_env`), invisible characters and raw bytes the tests feed in on purpose
+  (`invisible_unicode`, `hex_encoded_string`), a lazy import of the `os` module in a test option
+  (`python_import_os`) and the instruction to clone the original in `tools/vector_export/README.md` (`git_clone`).
+  The CMU pronouncing dictionary is shipped decompressed and byte-identical to the template's data (the template
+  ships it as `cmudict.txt.gz`; the sha256 of the decompressed file is in `THIRD_PARTY_NOTICES.md`), so it can be
+  read and checked without unpacking. The catalog would also accept the compressed file.
 
 ## Limits
 
@@ -192,9 +206,11 @@ for the same input. "Identical" below means: the same length, and no sample diff
   `normalize` is `false` and every voice has `"seed": 0` (the first voice uses the original's seeds anyway): each
   voice sings what `chimera render notes` sings for the same notes and lyrics, without a single differing 16-bit
   sample (measured on single melodies and a two-voice duet).
-- Speech with the `faithful` setting (or `faithful: true` on `chimera_speak`, see Settings): the whole text in one piece, starting with the original's glide up from
-  110 Hz, as `chimera render text` does. Measured on three new sentences that text preparation leaves unchanged, in
-  the male, female and child voices: same length, largest difference 5e-9 of the peak.
+- Speech with the `faithful` setting (or `faithful: true` on `chimera_speak`, see Settings): the whole text in one
+  piece, starting with the original's glide up from 110 Hz, as `chimera render text` does. (The web app's Speak mode
+  uses other default pitches - male 110 Hz, child 260 Hz - and the browser's sample rate and volume.) Measured on
+  three new sentences that text preparation leaves unchanged, in the male, female and child voices: same length,
+  largest difference 5e-9 of the peak.
 - The pronouncing dictionary (decompressed from the original's `cmudict.txt.gz`) and the phoneme tables are the
   original's data byte for byte (sha256 in `THIRD_PARTY_NOTICES.md`).
 
@@ -219,10 +235,11 @@ for the same input. "Identical" below means: the same length, and no sample diff
   without the first 0.1 s).
 - *Late entries in a score* (`start` > 0 or a leading rest) are rendered from about 0.3 s before the voice's first
   sound instead of from the beginning of the piece, so no render time goes into the silence before the entry (and
-  the per-score voice budget counts only what is rendered). Timing and loudness match the original (entry within
-  17 samples, envelope within about 1 dB); pitch drift and vibrato phase are a different random take: 9-11 cents
-  apart without vibrato and 17-36 cents with vibrato, less than the original differs from itself between two
-  seeds with vibrato (58-62 cents).
+  the per-score voice budget counts only what is rendered). Timing and loudness match the original: the voice's
+  first sound starts within 17 samples (0.35 ms) of the original's, each later note within 59 samples before to 102
+  samples after it (up to 2.1 ms, less than one period of the note's pitch), the envelope within about 1 dB. Pitch
+  drift and vibrato phase are a different random take: 9-11 cents apart without vibrato and 17-36 cents with
+  vibrato, less than the original differs from itself between two seeds with vibrato (58-62 cents).
 - *Voices after the first* get their own random seed unless they set `"seed": 0`, so voices with the same settings
   do not drift and waver in lockstep.
 - *Additions the original does not have:* dynamics (`dyn`), spoken slots (`say`), volume, pan and stereo mixing,

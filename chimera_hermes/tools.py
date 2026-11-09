@@ -72,7 +72,7 @@ CHIMERA_SPEAK = {"name": "chimera_speak",
                   "For your normal spoken replies use text_to_speech. " + _MEDIA_RULE),
   "parameters": {"type": "object", "properties": {
       "text": {"type": "string"}, "voice": {"type": "string"}, "speed": {"type": "number", "description": "0.5-1.8"},
-      "faithful": {"type": "boolean", "description": "true: render exactly like the original chimera web app (no number/abbreviation expansion, one piece, pitch glides in at the start)"},
+      "faithful": {"type": "boolean", "description": "true: render like the original chimera's command line `chimera render text` (no number/abbreviation expansion, one piece, pitch glides in at the start); the original web app uses other default pitches"},
       "wait_s": {"type": "number", "description": "Optional: max seconds to wait before returning a job id (0 = return at once)"}},
     "required": ["text"]}}
 CHIMERA_JOB = {"name": "chimera_job",

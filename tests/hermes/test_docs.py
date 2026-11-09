@@ -117,3 +117,18 @@ def test_skill_examples_validate_with_the_real_engine():
     for block in re.findall(r"```json\n(.*?)\n```", text, re.S):
         report = eng.check_score(json.loads(block))
         assert report.ok, [i.message for i in report.issues]
+
+
+def test_faithful_names_the_command_line_renderer(plugin):
+    """R2A-22: ``faithful`` reproduces the original's command-line ``chimera render text``; the original's web app
+    speaks with other default pitches. Settings row, manifest, tool schema and skill must say so."""
+    readme = _read("README.md")
+    row = next(ln for ln in readme.splitlines() if ln.startswith("| `faithful` |"))
+    manifest = re.search(r"^  faithful:.*?\n(?=  \w|\Z)", _read("plugin.yaml") + "\n", re.S | re.M).group(0)
+    schema = plugin.mod("tools").SCHEMAS["chimera_speak"]["parameters"]["properties"]["faithful"]["description"]
+    skill = _read("skills/music/SKILL.md")
+    for name, text in (("README", row), ("plugin.yaml", manifest), ("tool schema", schema), ("skill", skill)):
+        assert "chimera render text" in text, name
+        assert "web app" in text, f"{name}: say how the web app differs"
+        assert not re.search(r"exactly like the original('s)?( chimera)? web app", text), name
+    assert "110 Hz" in row and "260 Hz" in row

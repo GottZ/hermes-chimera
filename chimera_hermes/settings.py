@@ -100,7 +100,7 @@ def resolve_speed(hermes_speed: float | None, preset: Any) -> float:
 
 
 def faithful(ctx: Any) -> bool:
-    """Plugin setting ``faithful``: speak exactly like the template web app (see Engine.speak)."""
+    """Plugin setting ``faithful``: speak like the template's ``chimera render text`` command (see Engine.speak)."""
     v = setting(ctx, "faithful", False)
     if isinstance(v, str):
         return v.strip().lower() in ("true", "1", "yes", "on")
