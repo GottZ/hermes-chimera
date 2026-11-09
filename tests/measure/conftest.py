@@ -1,5 +1,6 @@
 """Measurement fixtures: the render pipeline (validate -> compile -> render_job -> mix) with FakeVoice ("fake",
-always) or the real engine ("real", when the text, plan, control and dsp packages are importable). Fixtures of
+always) or the real engine ("real", when the text, plan, control and dsp packages are importable; marked ``slow``:
+each case renders seconds of audio in-process on the numpy kernel, run them with ``--run-slow``). Fixtures of
 tests/support/fakes.py re-exported."""
 
 from __future__ import annotations
@@ -114,7 +115,7 @@ class Pipeline:
         return out
 
 
-@pytest.fixture(params=["fake", "real"])
+@pytest.fixture(params=["fake", pytest.param("real", marks=pytest.mark.slow)])
 def pipeline(request):
     if request.param == "fake":
         planner = request.getfixturevalue("stub_planner")
