@@ -1,0 +1,26 @@
+{
+ "source": "Template spread for K-4.10 (S4-TS): canon voice 3 of tests/measure/test_voice_start_block.py (vibrato default) rendered template-faithfully from block 0 (start_block 0, settle_f0 False) with the job's seeds (ref) and with 12 other seed sets Seeds.for_voice(0, 100 + k), k = 0..11 (draws); kernel numba in a render worker (numba = numpy within 5e-9 x peak, S3). Per draw: compare_split(ref, draw, onsets_s=[t_first], bands='all') and vibrato_stats(draw, held-note span) minus vibrato_stats(ref, span). Generator: lab/s4-ts/scripts/k410_band.py (chimera lab, S4-TS).",
+ "span_rel_held_note_s": [
+  0.55,
+  1.8928571428571428
+ ],
+ "start_block": 8494,
+ "ref_vibrato": {
+  "extent_ct": 33.29524056619566,
+  "rate_hz": 6.242262812406789
+ },
+ "draws": [
+  {"env_p95_db": 1.080905648411962, "f0_p90_ct": 60.436967671365274, "f0_onset_p90_ct": 20.032265610616857, "third_rms_db": 0.38513852987307823, "voicing_disagree": 0.0007258649891120251, "vib_extent_delta_ct": 0.24936425830468067, "vib_rate_delta_hz": 0.33785603997575286},
+  {"env_p95_db": 1.1283896329942884, "f0_p90_ct": 61.05156972145231, "f0_onset_p90_ct": 61.96324223392209, "third_rms_db": 0.1349575510833661, "voicing_disagree": 0.0009678199854827002, "vib_extent_delta_ct": 0.7976271540530036, "vib_rate_delta_hz": 0.08753138321840392},
+  {"env_p95_db": 1.024131858704095, "f0_p90_ct": 59.999942867605206, "f0_onset_p90_ct": 18.176368099650773, "third_rms_db": 0.3096232936487175, "voicing_disagree": 0.0009678199854827002, "vib_extent_delta_ct": 0.6644513709294273, "vib_rate_delta_hz": 0.33223674897106203},
+  {"env_p95_db": 0.9318624733697627, "f0_p90_ct": 53.923846400119686, "f0_onset_p90_ct": 52.84293885236131, "third_rms_db": 0.24876320295149765, "voicing_disagree": 0.0007258649891120251, "vib_extent_delta_ct": 0.3896120782416901, "vib_rate_delta_hz": 0.5053584643652469},
+  {"env_p95_db": 0.8971068902350314, "f0_p90_ct": 51.60768264139997, "f0_onset_p90_ct": 63.03025452894886, "third_rms_db": 0.2971835590927222, "voicing_disagree": 0.0004839099927413501, "vib_extent_delta_ct": 0.7351064367612068, "vib_rate_delta_hz": 0.35289034631747995},
+  {"env_p95_db": 0.8882460490053283, "f0_p90_ct": 48.10395029426372, "f0_onset_p90_ct": 48.488190711349425, "third_rms_db": 0.40024438349949887, "voicing_disagree": 0.0014517299782240503, "vib_extent_delta_ct": 0.0018129478009996092, "vib_rate_delta_hz": 0.5313545939954984},
+  {"env_p95_db": 1.0863519617558826, "f0_p90_ct": 57.44649064595548, "f0_onset_p90_ct": 53.54892575337067, "third_rms_db": 0.3686206974357734, "voicing_disagree": 0.0007258649891120251, "vib_extent_delta_ct": 0.7989721339770028, "vib_rate_delta_hz": 0.34396187032782155},
+  {"env_p95_db": 0.9131703256921408, "f0_p90_ct": 58.40242034566528, "f0_onset_p90_ct": 68.14957065940492, "third_rms_db": 0.17930050659396535, "voicing_disagree": 0.0012097749818533753, "vib_extent_delta_ct": 0.7568293867305371, "vib_rate_delta_hz": 0.3836957878655287},
+  {"env_p95_db": 0.9801131007342896, "f0_p90_ct": 58.56683677247701, "f0_onset_p90_ct": 60.856007799399485, "third_rms_db": 0.23613279812285667, "voicing_disagree": 0.0004839099927413501, "vib_extent_delta_ct": 0.9811650008951673, "vib_rate_delta_hz": 0.2426865991188265},
+  {"env_p95_db": 0.8148993349522904, "f0_p90_ct": 24.772766480499577, "f0_onset_p90_ct": 31.30513228868752, "third_rms_db": 0.4888560828807945, "voicing_disagree": 0.0009678199854827002, "vib_extent_delta_ct": 0.2958255056706278, "vib_rate_delta_hz": 0.40522086177365946},
+  {"env_p95_db": 1.0187278598729321, "f0_p90_ct": 52.98220539532275, "f0_onset_p90_ct": 36.12138230433023, "third_rms_db": 0.2570681785526975, "voicing_disagree": 0.0012097749818533753, "vib_extent_delta_ct": 1.146517894011268, "vib_rate_delta_hz": 0.21258135487191598},
+  {"env_p95_db": 0.8533569257978968, "f0_p90_ct": 42.43557996803318, "f0_onset_p90_ct": 50.8577563615166, "third_rms_db": 0.2789365143363205, "voicing_disagree": 0.0012097749818533753, "vib_extent_delta_ct": 0.37200967714289135, "vib_rate_delta_hz": 0.3574357659992069}
+ ]
+}

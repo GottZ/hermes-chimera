@@ -269,17 +269,29 @@ class SplitMetrics:
     third_rms_db: float        # RMS of the dB difference over the third-octave bands (see ``bands``)
     octave_fixed: int = 0      # YIN frames whose octave was corrected by the harmonic sum (both tracks)
     bands_excluded: int = 0    # third-octave bands left out (``bands="active40"`` only)
+    voicing_disagree: float = 0.0   # share of all YIN frames voiced in exactly one signal (E1-A "Stimmh. uneinig")
+    voiced_both: int = 0       # frames voiced in both signals (the f0 p90 population)
+    voiced_onset: int = 0      # of those, frames inside the onset windows (the onset p90 population)
+
+
+MIN_VOICED_BOTH = 40      # 0.2 s of 5-ms frames: below that a p90 is no measurement
+MIN_VOICED_ONSET = 5      # 25 ms inside the onset windows
 
 
 def compare_split(ref: np.ndarray, got: np.ndarray, fs: float = FS, *, onsets_s: Sequence[float] = (),
-                  fmin: float = 60.0, fmax: float = 500.0, bands: str = "all") -> SplitMetrics:
+                  fmin: float = 60.0, fmax: float = 500.0, bands: str = "all", min_voiced: int = MIN_VOICED_BOTH,
+                  min_onset_voiced: int = MIN_VOICED_ONSET) -> SplitMetrics:
     """Envelope p95, f0 p90 (all / onsets) and third-octave RMS between two renders of the same plan, measured like the
     phrase-split study on the native template: 10-ms RMS over frames above max − 45 dB, YIN (window 1024, 5-ms hop,
     60–500 Hz) |Δ cents| over frames voiced in both - unfolded; where the two tracks disagree by more than half an
     octave, each frame is re-decided between f/2, f, 2f by the harmonic sum (``octave_fixed`` counts the changes).
     ``bands="all"``: all 21 third-octave bands 100 Hz–10 kHz (the study's definition, mandatory on the real engine);
     ``bands="active40"``: only bands within 40 dB of the reference's strongest band (for FakeVoice, whose harmonic
-    spectrum leaves low bands nearly empty; ``bands_excluded`` counts the dropped bands)."""
+    spectrum leaves low bands nearly empty; ``bands_excluded`` counts the dropped bands).
+    ValueError when fewer than ``min_voiced`` frames are voiced in both signals, or (with ``onsets_s``) fewer than
+    ``min_onset_voiced`` inside the onset windows: an empty population would read 0 ct and pass any band (R2A-19;
+    the study reports NaN there, analyze.py:191). ``voicing_disagree`` is the study's share of frames voiced in only
+    one signal (analyze.py:185; band 0.010/0.032) - a defect that costs voicing instead of moving f0 shows there."""
     if bands not in ("all", "active40"):
         raise ValueError(bands)
     ref = np.asarray(ref, dtype=np.float64)
@@ -292,24 +304,79 @@ def compare_split(ref: np.ndarray, got: np.ndarray, fs: float = FS, *, onsets_s:
     t, fr = yin_track(ref, fs, fmin=fmin, fmax=fmax)
     _, fg = yin_track(got, fs, fmin=fmin, fmax=fmax)
     both = np.isfinite(fr) & np.isfinite(fg)
+    vdis = float(np.mean(np.isfinite(fr) != np.isfinite(fg))) if fr.size else 0.0
+    if int(both.sum()) < min_voiced:
+        raise ValueError(f"compare_split: {int(both.sum())} frames voiced in both signals (< {min_voiced}); "
+                         f"voiced in ref {int(np.isfinite(fr).sum())}, in got {int(np.isfinite(fg).sum())}")
     fixed = 0
     for i in np.flatnonzero(both):
         if abs(1200 * math.log2(fg[i] / fr[i])) > 600:
             a, b = _octave_resolve(ref, fs, t[i], fr[i]), _octave_resolve(got, fs, t[i], fg[i])
             fixed += (a != fr[i]) + (b != fg[i])
             fr[i], fg[i] = a, b
-    dc = np.abs(1200 * np.log2(fg[both] / fr[both])) if both.any() else np.zeros(1)
+    dc = np.abs(1200 * np.log2(fg[both] / fr[both]))
     f0p90 = float(np.percentile(dc, 90))
+    n_on = 0
     if len(onsets_s):
         m = np.zeros_like(both)
         for t0 in onsets_s:
             m |= (t >= t0) & (t <= t0 + 0.15)
         mo = m & both
-        do = np.abs(1200 * np.log2(fg[mo] / fr[mo])) if mo.any() else np.zeros(1)
-        onset = float(np.percentile(do, 90))
+        n_on = int(mo.sum())
+        if n_on < min_onset_voiced:
+            raise ValueError(f"compare_split: {n_on} frames voiced in both signals inside the onset windows "
+                             f"(< {min_onset_voiced})")
+        onset = float(np.percentile(np.abs(1200 * np.log2(fg[mo] / fr[mo])), 90))
     else:
         onset = 0.0
     tr, tg = third_octave_db(ref, fs), third_octave_db(got, fs)
     sel = tr > tr.max() - 40.0 if bands == "active40" else np.ones(len(tr), dtype=bool)
     third = float(np.sqrt(np.mean((tr[sel] - tg[sel]) ** 2)))
-    return SplitMetrics(env, f0p90, onset, third, int(fixed), int(len(tr) - sel.sum()))
+    return SplitMetrics(env, f0p90, onset, third, int(fixed), int(len(tr) - sel.sum()), vdis, int(both.sum()), n_on)
+
+
+# --- vibrato (K-4.10, phase-independent) ----------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class VibratoStats:
+    extent_ct: float      # median over spans of sqrt(2)·RMS of the detrended cents (amplitude of a sinusoid)
+    rate_hz: float        # median over spans of the spectral peak (2-10 Hz) of the detrended cents
+    spans: int            # spans with at least ``min_frames`` voiced frames
+
+
+def vibrato_stats(x: np.ndarray, spans_s: Sequence[tuple[float, float]], fs: float = FS, *, fmin: float = 60.0,
+                  fmax: float = 700.0, min_frames: int = 60) -> VibratoStats:
+    """Vibrato extent and rate of held notes, independent of the vibrato's phase: per span (s) the YIN track (5-ms hop)
+    in cents re the span median (frames more than half an octave off are folded back - one note, one pitch), a straight
+    line removed (drift, glide), unvoiced gaps interpolated; extent = sqrt(2)·RMS, rate = peak of the Hann-windowed
+    spectrum between 2 and 10 Hz (zero padded, parabolic). ValueError when no span has ``min_frames`` voiced frames."""
+    t, f = yin_track(x, fs, fmin=fmin, fmax=fmax)
+    ext: list[float] = []
+    rate: list[float] = []
+    hop = t[1] - t[0] if t.size > 1 else 0.005
+    for a, b in spans_s:
+        sel = (t >= a) & (t <= b)
+        ok = sel & np.isfinite(f)
+        if int(ok.sum()) < min_frames:
+            continue
+        idx = np.flatnonzero(sel)
+        tt = t[idx]
+        c = np.full(idx.size, np.nan)
+        v = np.isfinite(f[idx])
+        c[v] = 1200 * np.log2(f[idx][v] / float(np.median(f[idx][v])))
+        c[v] = c[v] - 1200 * np.round(c[v] / 1200)
+        c = np.interp(tt, tt[v], c[v])
+        c = c - np.polyval(np.polyfit(tt, c, 1), tt)
+        ext.append(math.sqrt(2.0) * math.sqrt(float(np.mean(c * c))))
+        nfft = 16384
+        X = np.abs(np.fft.rfft(c * np.hanning(c.size), nfft))
+        fr = np.fft.rfftfreq(nfft, hop)
+        band = np.flatnonzero((fr >= 2.0) & (fr <= 10.0))
+        k = int(band[np.argmax(X[band])])
+        p, q, s = X[k - 1], X[k], X[k + 1]
+        den = p - 2 * q + s
+        shift = min(0.5, max(-0.5, 0.5 * (p - s) / den)) if den < 0 and q >= max(p, s) else 0.0
+        rate.append(float(fr[k] + shift * (fr[1] - fr[0])))
+    if not ext:
+        raise ValueError(f"vibrato_stats: no span with {min_frames} voiced frames")
+    return VibratoStats(float(np.median(ext)), float(np.median(rate)), len(ext))

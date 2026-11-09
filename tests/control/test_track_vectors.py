@@ -99,6 +99,14 @@ LAB_CASES = [pytest.param("sustain-aa-male"), pytest.param("hello-male"),
              pytest.param("stop-male", marks=pytest.mark.slow), pytest.param("song-female", marks=pytest.mark.slow)]
 
 
+# Velocities (cm/s) decay towards 0, where the port and the template differ by rounding of the position-scale
+# arithmetic: at most 8.9e-14 cm/s absolute over all four full exports. With the T2 floor 1e-6 the correct port is red
+# (sustain-aa-male 9 values up to 7.9e-9 rel, song-female 87 values up to 1.6e-8 rel); the smallest floor that keeps
+# it green is 1.58e-5 (song-female). 1e-4 keeps a factor 6 and still sees an absolute error of 1e-13 cm/s
+# (S4-TS, lab/s4-ts/scripts/artic_v_floor.py; TESTPLAN "Änderungen S4").
+ARTIC_V_FLOOR = 1e-4
+
+
 @pytest.mark.lab
 @pytest.mark.parametrize("scenario", LAB_CASES)
 def test_track_full_lab(c2, lab_refs, scenario):
@@ -131,8 +139,8 @@ def test_track_full_lab(c2, lab_refs, scenario):
         for k, v in state.items():
             if c2.worst_rel([v], [blk[k][b]], c2.T2_FLOOR) >= c2.T2_TOL:
                 f.append(f"block {b}: {k} {v!r} vs {blk[k][b]!r}")
-        for k, arr, floor in (("artic_x", model.artic.x, c2.T2_FLOOR), ("artic_v", model.artic.v, 1e-3)):
-            if c2.worst_rel(arr, blk[k][b], floor) >= c2.T2_TOL:       # velocities: cm/s, decay to 0 (libm ulps)
+        for k, arr, floor in (("artic_x", model.artic.x, c2.T2_FLOOR), ("artic_v", model.artic.v, ARTIC_V_FLOOR)):
+            if c2.worst_rel(arr, blk[k][b], floor) >= c2.T2_TOL:
                 f.append(f"block {b}: {k}")
         failures += f
         if len(failures) > 20:
