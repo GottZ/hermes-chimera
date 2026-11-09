@@ -20,7 +20,7 @@ SCORE_SCHEMA: dict = {
         "bpm": {"type": "number", "minimum": 30, "maximum": 240},
         "lead_in": {"type": "number", "minimum": 0, "maximum": 2},
         "normalize": {"type": "boolean"},
-        "stereo": {"enum": ["auto", True, False]},
+        "stereo": {"enum": ["auto", True, False, "true", "false"]},
         "format": {"enum": ["auto", "wav", "mp3"]},
         "voices": {"type": "array", "minItems": 1, "items": {"type": "object", "required": ["notes"], "properties": {
             "name": {"type": "string", "maxLength": 40}, "body": {}, "start": {"type": "number", "minimum": 0},
@@ -103,6 +103,7 @@ class ScoreReport:
 # --- pitch, body ---------------------------------------------------------------------------------------------
 
 _PITCH = re.compile(r"^([A-Ga-g])(##|bb|#|b)?(-?\d)([+-]\d+(?:\.\d+)?)?$")
+_MIDI_TEXT = re.compile(r"^\s*\d{1,3}(?:\.\d+)?\s*$")      # "60", "60.5": a MIDI number sent as text
 _SEMI = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
 _ACC = {None: 0, "#": 1, "##": 2, "b": -1, "bb": -2}
 _NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
@@ -118,6 +119,8 @@ def parse_pitch(value: Any) -> float:
         return float(value)
     if not isinstance(value, str):
         raise ValueError(f"{value!r} is not a note name or MIDI number")
+    if _MIDI_TEXT.match(value):
+        return float(value)
     m = _PITCH.match(value)
     if not m:
         raise ValueError(f"{value!r} is not a note name")
@@ -251,6 +254,8 @@ def validate_score(score: "dict | str", *, g2p: Any, max_voices: int = 8,
     for key, allowed, default in (("normalize", (True, False), True), ("stereo", ("auto", True, False), "auto"),
                                   ("format", ("auto", "wav", "mp3"), "auto")):
         v = score.get(key, default)
+        if key == "stereo" and v in ("true", "false"):
+            v = v == "true"         # tool schemas offer stereo as a string enum (some providers enforce types)
         if not any(v is a or (isinstance(a, str) and v == a) for a in allowed):
             ctx.err(key, f'{json.dumps(v)} is not allowed for "{key}" - use one of '
                          f'{", ".join(json.dumps(a) for a in allowed)}.')

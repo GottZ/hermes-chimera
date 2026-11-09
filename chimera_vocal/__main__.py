@@ -6,7 +6,7 @@ import argparse
 import dataclasses
 import json
 import sys
-import time
+import tempfile
 from typing import Sequence
 
 COMMANDS = ("say", "sing", "check", "selftest", "bench")
@@ -20,16 +20,17 @@ def _parser() -> argparse.ArgumentParser:
     s.add_argument("text")
     s.add_argument("--voice", default="male", help="preset or voice spec, e.g. female;pitch=230")
     s.add_argument("--out", default="say.wav")
-    g = sub.add_parser("sing", help="render a score (JSON file) into WAV")
+    s.add_argument("--faithful", action="store_true",
+                   help="render exactly like the template's `chimera render text` (no text preparation, one piece)")
+    g = sub.add_parser("sing", help="render a score (JSON file) into WAV (convert to MP3 with ffmpeg yourself)")
     g.add_argument("score")
     g.add_argument("--out-dir", default=".")
     g.add_argument("--stem", default="score")
-    g.add_argument("--mp3", action="store_true", help="also write MP3 when ffmpeg is installed")
     c = sub.add_parser("check", help="validate a score (JSON file); exit 2 when it has errors")
     c.add_argument("score")
     sub.add_parser("selftest", help="render the built-in reference and compare (runs in a worker)")
-    b = sub.add_parser("bench", help="real-time factor of 1 s of a held vowel")
-    b.add_argument("--seconds", type=float, default=1.0)
+    b = sub.add_parser("bench", help="real-time factor of a held sung vowel (one voice, the score path)")
+    b.add_argument("--seconds", type=float, default=1.0, help="length of the held vowel (0.25-60 s)")
     for x in (s, g, b, c):
         x.add_argument("--backend", choices=("auto", "numba", "numpy"), default="auto")
         x.add_argument("--workers", type=int, default=0)
@@ -54,24 +55,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                               "voices": [dataclasses.asdict(v) for v in r.voices]}, indent=1, ensure_ascii=False))
             return 0 if r.ok else 2
         if args.cmd == "say":
-            audio, kernel = eng.speak(args.text, args.voice)
-            audio.to_wav(args.out)
-            print(f"{args.out}: {audio.duration_s():.2f} s ({kernel})")
+            res = eng.speak_to_wav(args.text, args.out, args.voice, faithful=args.faithful)
+            print(f"{args.out}: {res.seconds:.2f} s ({res.kernel})")
             return 0
         if args.cmd == "sing":
-            res = eng.render_score(_read_score(args.score), args.out_dir, args.stem, want_mp3=args.mp3)
-            print(json.dumps({"wav": res.path_wav, "mp3": res.path_mp3, "seconds": res.seconds, "kernel": res.kernel,
+            res = eng.render_score(_read_score(args.score), args.out_dir, args.stem)
+            print(json.dumps({"wav": res.path_wav, "seconds": res.seconds, "kernel": res.kernel,
                               "render_s": round(res.render_s, 3), "warnings": res.warnings}, indent=1))
             return 0
         if args.cmd == "selftest":
             print(eng.selftest())
             return 0
         if args.cmd == "bench":
-            t = time.perf_counter()
-            audio, kernel = eng.speak("ah.", "male")
-            dt = time.perf_counter() - t
-            print(json.dumps({"kernel": kernel, "audio_s": audio.duration_s(), "wall_s": round(dt, 3),
-                              "rtf": round(dt / max(audio.duration_s(), 1e-9), 3), "status": str(eng.status())}))
+            seconds = min(60.0, max(0.25, float(args.seconds)))
+            score = {"bpm": 60, "lead_in": 0.0, "voices": [{"body": "male", "vibrato": 0,
+                                                             "notes": [{"pitch": "A2", "beats": seconds,
+                                                                        "lyric": "ah"}]}]}
+            with tempfile.TemporaryDirectory(prefix="chimera-bench-") as d:
+                res = eng.render_score(score, d, "bench")
+            print(json.dumps({"kernel": res.kernel, "vowel_s": seconds, "audio_s": round(res.seconds, 3),
+                              "wall_s": round(res.render_s, 3), "rtf": round(res.render_s / max(res.seconds, 1e-9), 3),
+                              "status": str(eng.status())}))
             return 0
         return 2
     finally:

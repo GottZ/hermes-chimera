@@ -255,15 +255,25 @@ def test_natural_range_blend(stub_planner, pitch, warn):
 @pytest.mark.parametrize("text,midi", [
     ("C4", 60.0), ("c4", 60.0), ("C#5", 73.0), ("Db5", 73.0), ("Bb3", 58.0), ("B##3", 61.0), ("Cbb4", 58.0),
     ("A4", 69.0), ("A4+15", 69.15), ("A4-30", 68.7), ("E1", 28.0), ("E7", 100.0), (64, 64.0), (60.5, 60.5),
+    ("60", 60.0), ("60.5", 60.5), ("4", 4.0),     # MIDI numbers as text (the tool schema types pitch as a string)
 ])
 def test_parse_pitch(text, midi):
     assert parse_pitch(text) == pytest.approx(midi, abs=1e-12)
 
 
-@pytest.mark.parametrize("bad", ["H4", "C", "4", "C#", "Cx4", "A4+", "", "do4", None, True, [60]])
+@pytest.mark.parametrize("bad", ["H4", "C", "C#", "Cx4", "A4+", "", "do4", "-60", "6 0", "60.", None, True, [60]])
 def test_parse_pitch_invalid(bad):
     with pytest.raises(ValueError):
         parse_pitch(bad)
+
+
+def test_midi_text_out_of_range_is_an_error(stub_planner):
+    """R2A-03: "4" parses as MIDI 4 and is then rejected by the singable-range check at the same path."""
+    score = base_score()
+    score["voices"][0]["notes"][0]["pitch"] = "4"
+    report = validate_score(score, g2p=stub_planner.g2p)
+    assert not report.ok
+    assert [i.path for i in report.issues if i.severity == "error"] == ["voices[0].notes[0].pitch"]
 
 
 @pytest.mark.parametrize("midi,name", [(60, "C4"), (61, "C#4"), (58, "A#3"), (69.15, "A4+15"), (28, "E1")])

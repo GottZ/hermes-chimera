@@ -27,13 +27,13 @@ def _frames(samples: np.ndarray) -> tuple[np.ndarray, int]:
     raise ValueError(f"samples must be (n,) or (n, 2), got shape {x.shape}")
 
 
-def _encode(x: np.ndarray, bits: int) -> bytes:
-    """Interleaved little-endian sample bytes for a (n,) or (n, c) block."""
+ENCODE_BLOCK = 1 << 16                 # frames per encoding step: float64 temporaries stay a few MB
+
+
+def _encode_block(x: np.ndarray, bits: int) -> bytes:
     f32 = np.asarray(x, dtype=np.float32)
     if bits == 32:
         return np.ascontiguousarray(f32, dtype="<f4").tobytes()
-    if bits != 16:
-        raise ValueError("bits must be 16 or 32")
     v = f32.astype(np.float64)
     v[~np.isfinite(v)] = 0.0
     np.clip(v, -1.0, 1.0, out=v)
@@ -41,6 +41,20 @@ def _encode(x: np.ndarray, bits: int) -> bytes:
     r = np.floor(y)
     r = r + ((y - r) >= 0.5)          # js_round: halves toward +inf
     return np.ascontiguousarray(r.astype("<i2")).tobytes()
+
+
+def _encoded_blocks(x: np.ndarray, bits: int) -> Iterable[bytes]:
+    """Interleaved little-endian sample bytes of a (n,) or (n, c) array, ENCODE_BLOCK frames at a time (every
+    sample is converted on its own, so the bytes do not depend on the block size)."""
+    if bits not in (16, 32):
+        raise ValueError("bits must be 16 or 32")
+    for i in range(0, len(x), ENCODE_BLOCK):
+        yield _encode_block(x[i:i + ENCODE_BLOCK], bits)
+
+
+def _encode(x: np.ndarray, bits: int) -> bytes:
+    """Interleaved little-endian sample bytes for a (n,) or (n, c) block."""
+    return b"".join(_encoded_blocks(x, bits))
 
 
 def _header(n_frames: int, rate: int, channels: int, bits: int) -> bytes:
@@ -62,12 +76,18 @@ def wav_bytes(samples: np.ndarray, rate: int, *, bits: int = 16) -> bytes:
 
 
 def write_wav(path: str | os.PathLike, samples: np.ndarray, rate: int, *, bits: int = 16) -> None:
-    data = wav_bytes(samples, rate, bits=bits)
+    """Same bytes as ``wav_bytes``, written block by block (no copy of the whole signal in memory)."""
+    if bits not in (16, 32):
+        raise ValueError("bits must be 16 or 32")
+    x, ch = _frames(samples)
+    header = _header(len(x), int(rate), ch, bits)
     parent = os.path.dirname(os.fspath(path))
     if parent:
         os.makedirs(parent, exist_ok=True)
     with open(path, "wb") as f:
-        f.write(data)
+        f.write(header)
+        for block in _encoded_blocks(x, bits):
+            f.write(block)
 
 
 def write_wav_chunked(path: str | os.PathLike, chunks: Iterable[np.ndarray], rate: int, channels: int,
@@ -90,7 +110,8 @@ def write_wav_chunked(path: str | os.PathLike, chunks: Iterable[np.ndarray], rat
                 x, ch = _frames(c)
                 if ch != channels:
                     raise ValueError(f"chunk has {ch} channels, expected {channels}")
-                f.write(_encode(x, 16))
+                for block in _encoded_blocks(x, 16):
+                    f.write(block)
                 written += len(x)
         if written != n_frames:
             raise ValueError(f"wrote {written} frames, header says {n_frames}")

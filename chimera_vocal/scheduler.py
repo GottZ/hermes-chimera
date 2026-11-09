@@ -3,8 +3,14 @@ cancellation by process end. No numpy import at module level.
 
 Slots: ``workers`` = W; music runs on at most max(1, W − 1) workers, speech may use every free slot, and the total
 is max(1, W − 1) + 1 (with W = 1 speech starts a second worker instead of waiting). FIFO within a priority, speech
-first. Cancellation and idle time-outs are watched by one maintenance thread (50 ms poll); a running job is cancelled
-by ending its worker (terminate, wait 2 s, kill, wait - always reaped)."""
+first. Cancellation and idle time-outs are watched by one maintenance thread (50 ms poll) that runs only while there
+is something to watch (tasks, workers, a held worker); a running job is cancelled by ending its worker (terminate,
+wait 2 s, kill, wait - always reaped).
+
+numba warm-up: whenever numba would be used but no valid warm-up marker exists (first use, or the marker was removed
+later), one warm-up runs in a worker. It ends "ready" (marker valid in this process) or "failed" with the reason; a
+warm-up that only timed out waiting for another process's lock leaves the state "cold" with the reason and is retried
+on the next request."""
 
 from __future__ import annotations
 
@@ -263,12 +269,25 @@ class RenderScheduler:
         self._numba_failed = False
         self._numba_error: str | None = None
         self._warming = False
-        self._warm_started = False
+        self._warm_runs = 0
         self._spawn_failed = False
         self._inproc_lock = threading.Lock()
         from .music.estimate import DEFAULT_RTF
         self._rtf = dict(DEFAULT_RTF)
         self._closed = False
+
+    def set_backend(self, backend: Literal["auto", "numba", "numpy"]) -> None:
+        """Kernel policy for the next requests (a running request keeps its kernel)."""
+        with self._lock:
+            self.backend = backend
+
+    def set_workers(self, workers: int) -> None:
+        """New slot counts for the next tasks; running tasks finish, surplus idle workers retire after idle_s."""
+        with self._lock:
+            self.workers = max(1, int(workers))
+            self.music_cap = max(1, self.workers - 1)
+            self.total_cap = self.music_cap + 1
+            self._pump()
 
     # kernel choice --------------------------------------------------------------------------------------------
     def numba_state(self) -> str:
@@ -285,19 +304,31 @@ class RenderScheduler:
             return "numpy"
         if _marker_ok(self.cache_base):
             return "numba"
-        self._start_warm()
+        self.start_warmup()
         return "numpy"
 
-    def _start_warm(self) -> None:
+    def start_warmup(self, *, retry_failed: bool = False) -> bool:
+        """Start one numba warm-up in a worker unless numba is not used here, the marker is valid or a warm-up is
+        running. ``retry_failed`` (an explicit user request) clears an earlier failure first. True if one started."""
         with self._lock:
-            if self._warm_started or self._closed:
-                return
-            self._warm_started = True
+            if self._closed or self.backend == "numpy" or self._spawn_failed or not _numba_installed():
+                return False
+            if self._warming:
+                return False
+            if retry_failed and self._numba_failed:
+                self._numba_failed = False
+                self._numba_error = None
+                self._numba_crashes = 0
+            if self._numba_failed or _marker_ok(self.cache_base):
+                return False
             self._warming = True
+            self._warm_runs += 1
         threading.Thread(target=self._warm, name="chimera-warm", daemon=True).start()
+        return True
 
     def _warm(self) -> None:
         w = None
+        failed, error = False, None
         try:
             w = _Worker(self)
             w.send({"req": "warm", "op": "warm"})
@@ -305,14 +336,28 @@ class RenderScheduler:
                 msg, _ = w.read()
                 if msg.get("req") == "warm":
                     break
+            warm = msg.get("warm") if isinstance(msg.get("warm"), dict) else {}
             if msg.get("ok") is False:
-                self._numba_failed = True
-                self._numba_error = f"warm-up failed: {msg.get('error')}"
+                failed, error = True, f"warm-up failed: {msg.get('error')}"
+            elif warm.get("fake"):
+                pass                                    # test worker without numba
+            elif warm.get("marker") is None:
+                detail = warm.get("detail") or "no warm-up marker was written"
+                if warm.get("waited") and not warm.get("compiled"):
+                    error = f"warm-up not finished: {detail} (retried on the next render)"
+                else:
+                    failed, error = True, f"warm-up failed: {detail}"
+            elif _marker_ok(self.cache_base) is None:
+                failed, error = True, ("warm-up failed: the marker the worker wrote does not match this process "
+                                       "(numba, llvmlite, numpy or Python version, or CPU)")
         except (EOFError, OSError, ValueError) as e:
-            self._numba_failed = True
-            self._numba_error = f"warm-up worker died: {e} {w.tail() if w else ''}".strip()
+            failed, error = True, f"warm-up worker died: {e} {w.tail() if w else ''}".strip()
         finally:
-            self._warming = False
+            with self._lock:
+                if failed:
+                    self._numba_failed = True
+                self._numba_error = error
+                self._warming = False
             if w is not None:
                 w.quit()
 
@@ -332,6 +377,10 @@ class RenderScheduler:
         return fut
 
     def _ensure_maint(self) -> None:
+        """Start the maintenance thread if it is not running (lock held). It ends itself when there is nothing left
+        to watch, so an idle Hermes process is not woken 20 times a second."""
+        if self._closed:
+            return
         if self._maint is None or not self._maint.is_alive():
             self._maint = threading.Thread(target=self._maintain, name="chimera-scheduler", daemon=True)
             self._maint.start()
@@ -415,6 +464,7 @@ class RenderScheduler:
             if w.alive() and not self._closed:
                 w.last_used = time.monotonic()
                 self._idle.append(w)
+                self._ensure_maint()
                 return
         w.kill()
 
@@ -538,6 +588,11 @@ class RenderScheduler:
                         kill.append(w)
                 if self._held and not self._idle and not self._busy and not self._closed:
                     threading.Thread(target=self._spawn_idle, daemon=True).start()
+                quiet = (not kill and not self._held and not self._running and not self._idle and not self._busy
+                         and not any(self._queues.values()) and not getattr(self, "_spawning", False))
+                if quiet and self._maint is threading.current_thread():
+                    self._maint = None              # the next submit/hold_warm/idle worker starts a new one
+                    return
             for w in kill:
                 if w.dead:
                     continue
@@ -555,6 +610,7 @@ class RenderScheduler:
             w = _Worker(self)
             with self._lock:
                 self._idle.append(w)
+                self._ensure_maint()            # retires the worker after idle_s
         except OSError:
             pass
         finally:
