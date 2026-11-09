@@ -160,10 +160,40 @@ def sweep() -> list[str]:
     return found
 
 
+LIVE_ENGINES: list = []                      # for the hang report
+
+
 def make_engine(kernel: str, cache: Path, workers: int = 3):
     from chimera_vocal import Engine, EngineConfig
-    return Engine(EngineConfig(backend=kernel, workers=workers, in_process_fallback=False, cache_dir=str(cache),
-                               worker_idle_s=600.0))
+    eng = Engine(EngineConfig(backend=kernel, workers=workers, in_process_fallback=False, cache_dir=str(cache),
+                              worker_idle_s=600.0))
+    LIVE_ENGINES.append(eng)
+    return eng
+
+
+def hang_report(every_s: float) -> None:
+    """Daemon: every ``every_s`` seconds print every live engine's scheduler state, its workers and their stderr tails,
+    and the stacks of all threads of this process - a hung phase then says where it waits."""
+    import faulthandler
+
+    def run() -> None:
+        while True:
+            time.sleep(every_s)
+            print(f"--- still running after another {every_s:.0f} s", flush=True)
+            for eng in list(LIVE_ENGINES):
+                sc = eng.scheduler
+                try:
+                    print("scheduler:", json.dumps(sc.status(), default=str), flush=True)
+                    with sc._lock:
+                        ws = list(sc._busy) + list(sc._idle)
+                    for w in ws:
+                        print(f"  worker {w.pid} alive={w.alive()} tail={w.tail()!r}", flush=True)
+                except Exception as e:  # noqa: BLE001
+                    print("  status failed:", repr(e), flush=True)
+            faulthandler.dump_traceback(file=sys.stdout, all_threads=True)
+            sys.stdout.flush()
+
+    threading.Thread(target=run, name="smoke-hang-report", daemon=True).start()
 
 
 def cache_files(d: Path) -> dict[str, tuple[int, int]]:
@@ -231,6 +261,10 @@ def phase_warm(rep: Report, cache: Path) -> Any:
         st = m.get("selftest") or {}
         rep.data["warm_selftest"] = st
         rep.check("warm: marker selftest passed", st.get("passed") is True, f"max_rel_err {st.get('max_rel_err')}")
+        # "ready" means a valid marker exists; the engine whose worker waited for it may still be polling (0.5 s).
+        # Removing the marker before that worker returned would make it compile again, so wait for both to finish.
+        idle = wait_until(lambda: not (e1.scheduler._warming or e2.scheduler._warming), 60, 0.05)
+        rep.check("warm: both warm-up workers returned", idle is not None)
         rep.check("warm: no lock file left", not (d / ".warm.lock").exists())
         e2.shutdown()
         os.remove(d / MARKER_NAME)
@@ -505,6 +539,7 @@ def main() -> int:
     rep.data["env"] = environment()
     print(json.dumps(rep.data["env"]), flush=True)
     track_workers()
+    hang_report(150.0)
     has_numba = importlib.util.find_spec("numba") is not None
     if args.expect_numba != "auto":
         rep.check("numba importable as expected for this platform", has_numba == (args.expect_numba == "yes"),
