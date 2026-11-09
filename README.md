@@ -98,8 +98,9 @@ worked examples. Tools:
 Hermes gives one tool call a fixed time limit (420 s by default). Longer renders keep running in the background and
 the agent fetches the result with `chimera_job` (or stops it with `cancel: true`); a job can only be fetched from
 the session that started it (or, on Hermes versions that pass a conversation id, from the same conversation after
-the session id changed), and results are kept for two hours. Results are files under `<HERMES_HOME>/cache/audio/chimera/`; the agent puts a `MEDIA:` line into its reply
-and Hermes delivers the file (a player in the desktop app, an audio file in messaging apps).
+the session id changed), and results are kept for two hours. Results are files under
+`<HERMES_HOME>/cache/audio/chimera/`; the agent puts a `MEDIA:` line into its reply and Hermes delivers the file (a
+player in the desktop app, an audio file in messaging apps).
 
 Limits per score: 8 voices, 300 s of music, 1200 s summed over the voices; one tempo; one melody line per voice.
 
@@ -158,10 +159,11 @@ The tool `chimera_speak` also takes `faithful` per call.
   chimera-numba). chimera never writes Hermes' configuration; `/chimera voice` stores only the plugin's own setting.
 - **Network, credentials, telemetry.** None.
 - **Security scanner.** `hermes plugins validate` passes (`security scan — safe`). Hermes' install-time scanner
-  itself lists one medium finding, `oversized_file`, for `chimera_vocal/data/cmudict.txt` (3.3 MB, verdict `safe`):
-  the CMU pronouncing dictionary is shipped decompressed and byte-identical to the template's data (the template
-  ships it as `cmudict.txt.gz`; the sha256 of the decompressed file is in `THIRD_PARTY_NOTICES.md`), so it can be
-  read and checked without unpacking. The catalog would also accept the compressed file.
+  itself lists only medium-severity notes (verdict `safe`): subprocess calls (render workers, ffmpeg, tests) and
+  `oversized_file` for `chimera_vocal/data/cmudict.txt` (3.3 MB). The CMU pronouncing dictionary is shipped
+  decompressed and byte-identical to the template's data (the template ships it as `cmudict.txt.gz`; the sha256 of
+  the decompressed file is in `THIRD_PARTY_NOTICES.md`), so it can be read and checked without unpacking. The
+  catalog would also accept the compressed file.
 
 ## Limits
 
