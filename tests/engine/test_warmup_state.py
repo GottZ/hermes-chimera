@@ -152,7 +152,7 @@ def test_engine_warmup_requests_a_retry(make_engine, monkeypatch):
 
 
 def test_request_policy_auto_on_a_numpy_scheduler(stub_warm, sched):
-    """K-S5b.9: process setting numpy (another profile applied last), request ``auto``: numpy at first while the
+    """K-5.21: process setting numpy (another profile applied last), request ``auto``: numpy at first while the
     request's policy starts the warm-up, numba once the marker is valid. Requests without a policy keep the
     scheduler's numpy and start nothing. Red proof: RenderScheduler.choose_kernel took no policy."""
     def ok():
@@ -170,7 +170,7 @@ def test_request_policy_auto_on_a_numpy_scheduler(stub_warm, sched):
 
 
 def test_engine_kernel_choice_is_the_schedulers(make_engine, monkeypatch):
-    """K-S5b.10: Engine.choose_kernel hands the request's policy to the scheduler and reads none of its internals
+    """K-5.22: Engine.choose_kernel hands the request's policy to the scheduler and reads none of its internals
     (lock, spawn state). Red proof: the engine took the scheduler's lock and read its fields itself."""
     eng = make_engine(workers=2, backend="numpy")
     seen = []

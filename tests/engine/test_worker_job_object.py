@@ -9,7 +9,7 @@ kill-on-close job held with the worker.
 
 Here a small shell script plays the launcher (it starts the interpreter as its child and waits for it), the
 platform switch ``scheduler._JOB_OBJECTS`` is turned on, and ``scheduler._kernel32`` returns a fake that records the
-calls. Tests K-S5b.1 ... K-S5b.8.
+calls. Tests K-5.13 ... K-5.20.
 """
 
 from __future__ import annotations
@@ -151,7 +151,7 @@ def assert_gone(pids) -> None:
 # --- protocol ----------------------------------------------------------------------------------------------
 
 def test_hello_is_the_first_frame(tmp_path):
-    """K-S5b.1: the worker's first frame names the interpreter's pid, before the answer to the first request."""
+    """K-5.13: the worker's first frame names the interpreter's pid, before the answer to the first request."""
     p = spawn_worker(tmp_path / "stderr.txt", env={"CHIMERA_WORKER_VOICE_FACTORY": FACTORY_SPEC}, read_hello=False)
     try:
         write_frame(p.stdin, {"req": "r", "op": "render", "job": fake_job("h", 0.05).to_json(), "kernel": "numpy",
@@ -176,7 +176,7 @@ def test_hello_is_the_first_frame(tmp_path):
 
 @posix_only
 def test_interpreter_behind_launcher_joins_the_job(fake_workers, make_scheduler, launcher, jobs):
-    """K-S5b.2: reported pid != started pid -> OpenProcess + AssignProcessToJobObject with the reported pid, the
+    """K-5.14: reported pid != started pid -> OpenProcess + AssignProcessToJobObject with the reported pid, the
     process handle closed; the job handles are closed with the worker."""
     fake, started = jobs()
     sched = make_scheduler(workers=2)
@@ -200,7 +200,7 @@ def test_interpreter_behind_launcher_joins_the_job(fake_workers, make_scheduler,
 
 @posix_only
 def test_interpreter_already_in_job_is_not_assigned_again(fake_workers, make_scheduler, launcher, jobs):
-    """K-S5b.3: an interpreter its launcher started inside the job is left as it is (no second assignment)."""
+    """K-5.15: an interpreter its launcher started inside the job is left as it is (no second assignment)."""
     fake, _ = jobs(in_job=True)
     sched = make_scheduler(workers=2)
     stats = render(sched)
@@ -214,7 +214,7 @@ def test_interpreter_already_in_job_is_not_assigned_again(fake_workers, make_sch
 
 @posix_only
 def test_refused_interpreter_gets_a_job_of_its_own(fake_workers, make_scheduler, launcher, jobs):
-    """K-S5b.4: the worker's job refuses the interpreter (it is in its launcher's job already) -> a new kill-on-close
+    """K-5.16: the worker's job refuses the interpreter (it is in its launcher's job already) -> a new kill-on-close
     job takes it; that job is closed with the worker."""
     fake, _ = jobs(refuse_worker_job=True)
     sched = make_scheduler(workers=2)
@@ -235,7 +235,7 @@ def test_refused_interpreter_gets_a_job_of_its_own(fake_workers, make_scheduler,
 @posix_only
 @pytest.mark.parametrize("case", ["open fails", "both jobs refuse", "call raises"])
 def test_join_failure_is_logged_not_raised(fake_workers, make_scheduler, launcher, jobs, caplog, case):
-    """K-S5b.5: a failure to put the interpreter into a job is logged; the render goes on; no handle leaks."""
+    """K-5.17: a failure to put the interpreter into a job is logged; the render goes on; no handle leaks."""
     kw = {"open fails": {"open_ok": False}, "both jobs refuse": {"refuse_worker_job": True, "refuse_own_job": True},
           "call raises": {"raise_on_open": True}}[case]
     fake, _ = jobs(**kw)
@@ -255,7 +255,7 @@ def test_join_failure_is_logged_not_raised(fake_workers, make_scheduler, launche
 
 @posix_only
 def test_held_worker_joins_before_its_first_request(fake_workers, make_scheduler, launcher, jobs):
-    """K-S5b.6: a worker kept warm (idle until a request comes) has its interpreter in the job already."""
+    """K-5.18: a worker kept warm (idle until a request comes) has its interpreter in the job already."""
     fake, _ = jobs()
     sched = make_scheduler(workers=2, idle_s=30)
     sched.hold_warm(True)
@@ -275,7 +275,7 @@ def test_held_worker_joins_before_its_first_request(fake_workers, make_scheduler
 
 @posix_only   # a Windows venv's python.exe is a launcher, so there the interpreter is never the started process
 def test_same_process_is_not_assigned_again(fake_workers, make_scheduler, jobs):
-    """K-S5b.7: without a launcher the reported pid is the started process, which is in the job already."""
+    """K-5.19: without a launcher the reported pid is the started process, which is in the job already."""
     fake, started = jobs()
     sched = make_scheduler(workers=2)
     stats = render(sched)
@@ -287,7 +287,7 @@ def test_same_process_is_not_assigned_again(fake_workers, make_scheduler, jobs):
 
 @posix_only
 def test_no_job_object_no_assignment(fake_workers, make_scheduler, launcher, jobs):
-    """K-S5b.8: when no job object could be made for the started process there is nothing to join."""
+    """K-5.20: when no job object could be made for the started process there is nothing to join."""
     fake, _ = jobs(job=None)
     sched = make_scheduler(workers=2)
     stats = render(sched)
