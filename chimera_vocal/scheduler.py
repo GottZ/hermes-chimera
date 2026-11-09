@@ -18,6 +18,7 @@ import collections
 import concurrent.futures
 import importlib.util
 import itertools
+import logging
 import os
 import subprocess
 import sys
@@ -34,6 +35,10 @@ if TYPE_CHECKING:  # pragma: no cover
 THREAD_ENV = {"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
 CHUNK = 48000
 POLL_S = 0.05
+# Windows: every worker runs in a job object that ends it when this process ends (module flag so tests can switch it)
+_JOB_OBJECTS = os.name == "nt"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -118,7 +123,11 @@ class _Worker:
                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=sched.root, env=env,
                                      close_fds=True, **kw)
         self.pid = self.proc.pid
-        self.job_handle = _assign_job_object(self.proc) if os.name == "nt" else None
+        self.interp_pid: int | None = None      # from the worker's hello: the interpreter that renders
+        self.job_state: str | None = None       # how that interpreter got into a job object (diagnostics)
+        self.interp_job: Any = None             # a job of its own, when the worker's job could not take it
+        self._job_lock = threading.Lock()
+        self.job_handle = _assign_job_object(self.proc) if _JOB_OBJECTS else None
         self.err_tail: collections.deque[str] = collections.deque(maxlen=40)
         threading.Thread(target=self._drain, name=f"chimera-worker-{self.pid}-stderr", daemon=True).start()
         self.last_used = time.monotonic()
@@ -145,8 +154,46 @@ class _Worker:
         self._write(self.proc.stdin, msg)
 
     def read(self):
+        """Next frame from the worker; its hello (always the first frame) is handled here and never returned."""
         from .worker import read_frame
-        return read_frame(self.proc.stdout)
+        while True:
+            msg, raw = read_frame(self.proc.stdout)
+            if "hello" in msg and "req" not in msg:
+                self._on_hello(msg)
+                continue
+            return msg, raw
+
+    def await_hello(self) -> None:
+        """Read the hello now - for a worker that waits idle before its first request."""
+        from .worker import ProtocolError, read_frame
+        msg, _ = read_frame(self.proc.stdout)
+        if "hello" not in msg or "req" in msg:
+            raise ProtocolError(f"expected the worker's hello, got {str(msg)[:120]}")
+        self._on_hello(msg)
+
+    def _on_hello(self, msg: dict) -> None:
+        """Note the interpreter pid the worker reports and, on Windows, make sure that interpreter is in a job object
+        too. Behind a venv launcher the interpreter is a child of the started process; the launcher may start it
+        before the started process was assigned to the job (that happens only after Popen returns), and then the
+        interpreter is outside the job. Never raises: a failure is logged, the EOF watch still ends the worker."""
+        pid = msg.get("pid")
+        if not isinstance(pid, int) or isinstance(pid, bool):
+            return
+        self.interp_pid = pid
+        if pid == self.pid:
+            self.job_state = "same process"
+            return
+        with self._job_lock:
+            if not self.job_handle or self.dead:
+                return
+            try:
+                state, own = _join_job(_kernel32(), self.job_handle, pid)
+            except Exception as e:  # noqa: BLE001 - best effort
+                state, own = f"failed: {type(e).__name__}: {e}", None
+            self.job_state, self.interp_job = state, own
+        if state.startswith("failed"):
+            logger.warning("chimera: render worker interpreter %d (started process %d) is not in a job object: %s",
+                           pid, self.pid, state)
 
     def tail(self) -> str:
         return " | ".join(list(self.err_tail)[-6:])
@@ -172,10 +219,17 @@ class _Worker:
                 pass
 
     def _close_job(self) -> None:
-        h, self.job_handle = self.job_handle, None
-        if h:  # pragma: no cover - Windows
-            import ctypes
-            ctypes.WinDLL("kernel32").CloseHandle(h)
+        """Close the job handles; with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE that ends the processes in them at once."""
+        with self._job_lock:
+            handles = [h for h in (self.interp_job, self.job_handle) if h]
+            self.interp_job = self.job_handle = None
+        if handles:
+            try:
+                k32 = _kernel32()
+                for h in handles:
+                    k32.CloseHandle(h)
+            except Exception:  # noqa: BLE001 - the process exit closes them anyway
+                pass
 
     def quit(self) -> None:
         self.dead = True
@@ -188,46 +242,116 @@ class _Worker:
         self.kill()
 
 
-def _assign_job_object(proc: subprocess.Popen) -> Any:  # pragma: no cover - Windows only
+_K32: Any = None
+_PROCESS_JOIN_ACCESS = 0x0100 | 0x0001 | 0x1000     # PROCESS_SET_QUOTA | _TERMINATE | _QUERY_LIMITED_INFORMATION
+_KILL_ON_JOB_CLOSE = 0x2000                          # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+_EXTENDED_LIMIT_INFORMATION = 9                      # JobObjectExtendedLimitInformation
+
+
+def _kernel32() -> Any:  # pragma: no cover - Windows only (tests replace this function)
+    """The kernel32 calls the job-object code uses, with pointer-sized handle types, plus ``last_error()``."""
+    global _K32
+    if _K32 is None:
+        import ctypes
+        import types
+        from ctypes import wintypes
+        dll = ctypes.WinDLL("kernel32", use_last_error=True)
+        h = wintypes.HANDLE
+        sigs = {"CreateJobObjectW": (h, [ctypes.c_void_p, wintypes.LPCWSTR]),
+                "SetInformationJobObject": (wintypes.BOOL, [h, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]),
+                "AssignProcessToJobObject": (wintypes.BOOL, [h, h]),
+                "OpenProcess": (h, [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]),
+                "IsProcessInJob": (wintypes.BOOL, [h, h, ctypes.POINTER(wintypes.BOOL)]),
+                "CloseHandle": (wintypes.BOOL, [h])}
+        ns = types.SimpleNamespace(last_error=ctypes.get_last_error)
+        for name, (res, args) in sigs.items():
+            f = getattr(dll, name)
+            f.restype, f.argtypes = res, args
+            setattr(ns, name, f)
+        _K32 = ns
+    return _K32
+
+
+def _new_job(k32: Any) -> Any:
+    """A new job object that ends its processes when its last handle closes; None if that fails."""
+    import ctypes
+    from ctypes import wintypes
+
+    class IO_COUNTERS(ctypes.Structure):
+        _fields_ = [(n, ctypes.c_ulonglong) for n in ("ReadOperationCount", "WriteOperationCount",
+                                                      "OtherOperationCount", "ReadTransferCount",
+                                                      "WriteTransferCount", "OtherTransferCount")]
+
+    class BASIC(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong), ("PerJobUserTimeLimit", ctypes.c_longlong),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class EXTENDED(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", BASIC), ("IoInfo", IO_COUNTERS),
+                    ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                    ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    job = k32.CreateJobObjectW(None, None)
+    if not job:
+        return None
+    info = EXTENDED()
+    info.BasicLimitInformation.LimitFlags = _KILL_ON_JOB_CLOSE
+    if not k32.SetInformationJobObject(job, _EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info)):
+        k32.CloseHandle(job)
+        return None
+    return job
+
+
+def _assign_job_object(proc: subprocess.Popen) -> Any:
     """Windows: put the worker into a job object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. The handle stays open in
     this process; when the process ends (even killed), the OS closes it and ends the worker, so a dying gateway
     leaves no rendering orphans."""
     try:
-        import ctypes
-        from ctypes import wintypes
-        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-
-        class IO_COUNTERS(ctypes.Structure):
-            _fields_ = [(n, ctypes.c_ulonglong) for n in ("ReadOperationCount", "WriteOperationCount",
-                                                          "OtherOperationCount", "ReadTransferCount",
-                                                          "WriteTransferCount", "OtherTransferCount")]
-
-        class BASIC(ctypes.Structure):
-            _fields_ = [("PerProcessUserTimeLimit", ctypes.c_longlong), ("PerJobUserTimeLimit", ctypes.c_longlong),
-                        ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
-                        ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
-                        ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
-                        ("SchedulingClass", wintypes.DWORD)]
-
-        class EXTENDED(ctypes.Structure):
-            _fields_ = [("BasicLimitInformation", BASIC), ("IoInfo", IO_COUNTERS),
-                        ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
-                        ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
-
-        job = k32.CreateJobObjectW(None, None)
+        k32 = _kernel32()
+        job = _new_job(k32)
         if not job:
             return None
-        info = EXTENDED()
-        info.BasicLimitInformation.LimitFlags = 0x2000          # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-        if not k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):   # Extended info
-            k32.CloseHandle(job)
-            return None
-        if not k32.AssignProcessToJobObject(job, wintypes.HANDLE(int(proc._handle))):
+        if not k32.AssignProcessToJobObject(job, int(proc._handle)):
             k32.CloseHandle(job)
             return None
         return job
     except Exception:  # noqa: BLE001 - best effort; the EOF watch still ends the worker
         return None
+
+
+def _join_job(k32: Any, job: Any, pid: int) -> "tuple[str, Any]":
+    """Put process ``pid`` (a worker's interpreter) into the worker's kill-on-close job ``job``.
+
+    Returns (state, own_job): "inherited" - already in ``job`` (started after its parent joined), nothing assigned;
+    "assigned" - assigned to ``job`` now; "own job" - ``job`` refused it, a new kill-on-close job ``own_job`` (to be
+    closed with the worker) holds it; "failed: ..." - neither worked, ``own_job`` None. A process that is already in a
+    job can only join a job that is empty or one in its own job chain; CPython's venv launcher puts the interpreter
+    into a job of its own right after starting it, so when the launcher was not yet in ``job`` at that moment,
+    ``job`` (not empty: it holds the launcher) refuses the interpreter and only a new, empty job can take it. The
+    process handle is always closed again."""
+    from ctypes import pointer, wintypes
+    h = k32.OpenProcess(_PROCESS_JOIN_ACCESS, False, pid)
+    if not h:
+        return f"failed: cannot open process {pid} (error {k32.last_error()})", None
+    try:
+        inside = wintypes.BOOL(0)
+        if k32.IsProcessInJob(h, job, pointer(inside)) and inside.value:
+            return "inherited", None
+        if k32.AssignProcessToJobObject(job, h):
+            return "assigned", None
+        refused = k32.last_error()
+        own = _new_job(k32)
+        if own and k32.AssignProcessToJobObject(own, h):
+            return "own job", own
+        err = k32.last_error()
+        if own:
+            k32.CloseHandle(own)
+        return f"failed: the worker's job refused it (error {refused}), a job of its own too (error {err})", None
+    finally:
+        k32.CloseHandle(h)
 
 
 # --- scheduler --------------------------------------------------------------------------------------------------
@@ -608,15 +732,26 @@ class RenderScheduler:
             if self._idle or self._busy or getattr(self, "_spawning", False):
                 return
             self._spawning = True
+        from .worker import ProtocolError
+        w = None
         try:
             w = _Worker(self)
             with self._lock:
-                self._idle.append(w)
-                self._ensure_maint()            # retires the worker after idle_s
-        except OSError:
+                self._busy.append(w)            # shutdown ends it while it starts
+            w.await_hello()                     # up, and its interpreter in the job, before it waits idle
+            with self._lock:
+                if w in self._busy and not self._closed:
+                    self._busy.remove(w)
+                    w.last_used = time.monotonic()
+                    self._idle.append(w)
+                    self._ensure_maint()        # retires the worker after idle_s
+                    w = None
+        except (OSError, EOFError, ValueError, ProtocolError):
             pass
         finally:
             self._spawning = False
+            if w is not None:
+                self._discard(w)
 
     def selftest(self, kernel: str) -> Any:
         """Run the selftest op in a fresh worker; returns dsp.backend.SelfTestResult (or a dict from fakes)."""

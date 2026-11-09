@@ -20,6 +20,8 @@ Phases (numpy always, numba when it is importable):
   cancel   a long two-voice score is cancelled while two workers render: RenderCancelled, both workers ended and
            reaped, no output or temporary file left.
   host     a child process renders and is killed hard; its workers must end (EOF watch; Windows: job object).
+On Windows the score phase also checks that the interpreter each worker names in its hello (behind a venv launcher a
+child of the started process) is in a job object the host holds.
 A process sweep (ps / Win32_Process) after the engines shut down and after the host kill must find no worker.
 Writes report.json and the rendered WAVs to --out; exit status 1 if any check failed.
 """
@@ -194,7 +196,8 @@ def all_ended(pids: list[int]) -> bool:
 
 def job_membership(eng) -> dict:
     """Windows: for every live worker of ``eng``, is the started process - and each interpreter it started - in the
-    worker's job object (IsProcessInJob)? {} elsewhere."""
+    worker's job object, and is the interpreter the worker reported in its hello in a job the worker holds (its job
+    or one of its own; IsProcessInJob)? {} elsewhere."""
     if os.name != "nt":
         return {}
     import ctypes
@@ -221,8 +224,12 @@ def job_membership(eng) -> dict:
         if not w.job_handle:
             out[str(w.pid)] = "no job object"
             continue
+        held = [j for j in (w.job_handle, w.interp_job) if j]
         out[str(w.pid)] = {"started": in_job(w.pid, w.job_handle),
-                           "children": {str(c): in_job(c, w.job_handle) for c, pp in procs.items() if pp == w.pid}}
+                           "children": {str(c): in_job(c, w.job_handle) for c, pp in procs.items() if pp == w.pid},
+                           "interpreter": w.interp_pid, "join": w.job_state,
+                           "interpreter_in_held_job": (None if w.interp_pid is None else
+                                                       any(in_job(w.interp_pid, j) for j in held))}
     return out
 
 
@@ -462,9 +469,17 @@ def phase_score(rep: Report, eng, kernel: str, out: Path, work: Path, keep: dict
     rep.data[f"{kernel}_score_pids"] = {"reported": sorted(pids), "launcher_children": sorted(set(tree) - set(SPAWNED))}
     rep.check(f"{kernel} score: RenderStats.worker_pid names a running worker interpreter", pids <= set(tree),
               f"reported {sorted(pids)}, worker processes {tree}")
+    with eng.scheduler._lock:
+        hello = {w.interp_pid for w in list(eng.scheduler._busy) + list(eng.scheduler._idle)}
+    rep.check(f"{kernel} score: every rendering interpreter was named by its worker's hello", pids <= hello,
+              f"reported {sorted(pids)}, hello {sorted(p for p in hello if p is not None)}")
     jm = job_membership(eng)
     if jm:
         rep.data[f"{kernel}_job_membership"] = jm
+    if os.name == "nt":
+        rep.check(f"{kernel} score: every worker interpreter is in a job object the host holds (IsProcessInJob)",
+                  bool(jm) and all(isinstance(v, dict) and v["interpreter_in_held_job"] is True for v in jm.values()),
+                  json.dumps(jm))
 
     x0, e0 = sinks[0].data, entry[0]
     rep.check(f"{kernel} score: voice 1 starts at block 0, length = native", jobs[0].start_block == 0 and

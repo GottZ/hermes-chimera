@@ -2,7 +2,9 @@
 
 Started by the scheduler as ``python -I -S -u -c BOOTSTRAP`` with stdin/stdout pipes. First stdin line: JSON
 handshake ``{"proto": 2, "sys_path", "site_dirs", "root", "cache_base"}``. Afterwards frames in both directions:
-``b"CHW2" + uint32_le(len) + utf8-JSON``, a ``chunk`` reply followed by a raw frame of float32 LE samples.
+``b"CHW2" + uint32_le(len) + utf8-JSON``, a ``chunk`` reply followed by a raw frame of float32 LE samples. The
+worker's first frame is its hello ``{"hello": 2, "pid"}``: the pid of the interpreter that renders, which behind a
+Windows venv launcher is a child of the process the host started.
 Ops: render, warm, selftest, quit. EOF on stdin ends the process at once, so a host that dies (or closes the pipe)
 leaves no worker rendering on.
 
@@ -217,7 +219,11 @@ def _wait_for_input(f: BinaryIO) -> None:
 
 
 def serve(inp: BinaryIO, out: BinaryIO) -> None:
-    """Worker main loop: EOF watcher thread, request queue, ops render/warm/selftest/quit."""
+    """Worker main loop: hello frame, EOF watcher thread, request queue, ops render/warm/selftest/quit."""
+    try:
+        write_frame(out, {"hello": PROTO, "pid": os.getpid()})
+    except OSError:
+        os._exit(0)
     state = _State(fake=_install_test_factory() is not None)
     q: "queue.Queue[dict]" = queue.Queue()
 
