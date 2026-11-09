@@ -68,14 +68,6 @@ jobs:
           "$PY" -m pip list
           mkdir -p ci-out
 
-      - name: "Diagnostic (temporary): start one render worker"
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        timeout-minutes: 5
-        run: |
-          "$PY" .github/ci-diag/worker_probe.py 2>&1 | tee ci-out/diag-worker-probe.txt
-          "$PY" -m pytest -q -p no:cacheprovider -rfE --timeout=200 tests/engine/test_worker_first_import.py 2>&1 | tee -a ci-out/diag-worker-probe.txt
-
       - name: Platform smoke (worker processes, both kernels, cancel, killed host)
         if: ${{ !cancelled() }}
         timeout-minutes: 10
@@ -94,18 +86,6 @@ jobs:
           "$PY" -m pytest -q -p no:cacheprovider --collect-only tests/measure | tr -d '\r' | grep '\[real' | sed 's/^/--deselect=/' > ci-out/deselect.txt || true
           echo "deselected: $(wc -l < ci-out/deselect.txt)"
           "$PY" -m pytest -q -p no:cacheprovider -n auto -rfE --durations=30 --timeout=420 -o faulthandler_timeout=300 --junitxml=ci-out/junit.xml @ci-out/deselect.txt 2>&1 | tee ci-out/pytest.log
-
-      - name: "Diagnostic (temporary): numba against CPython math"
-        if: ${{ !cancelled() && matrix.numba == 'yes' }}
-        continue-on-error: true
-        timeout-minutes: 5
-        run: |
-          "$PY" .github/ci-diag/libm_vs_numba.py 2>&1 | tee ci-out/diag-libm.txt
-          for h in 0 1; do
-            echo "== geometry numba vs CPython, tolerance 0, CPython uses the C library hypot: $h" | tee -a ci-out/diag-geometry.txt
-            DIAG_TOL=0 DIAG_LIBM_HYPOT=$h PYTHONPATH=.github/ci-diag "$PY" -m pytest -q -p no:cacheprovider -p diagplug \
-              tests/control/test_geometry_numba.py::test_geometry_numba 2>&1 | grep -E 'postures differ|posture [0-9]+:|passed|failed' | head -8 | tee -a ci-out/diag-geometry.txt || true
-          done
 
       - name: Upload logs and smoke WAVs
         if: ${{ always() }}
