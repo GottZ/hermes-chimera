@@ -2,4 +2,8 @@
 name = "chimera-numba"
 version = "0.1.0"
 requires-python = ">=3.11"
+# numba>=0.67: 0.67.0 is the first numba release with CPython 3.14 wheels for Windows ARM64 (Linux x86_64 and
+# aarch64, macOS arm64 and Windows AMD64 have them since 0.63.0), and the first that accepts numpy 2.5
+# (it requires numpy<2.6; 0.64-0.66 cap numpy below 2.5). <1 keeps a future major release out.
+# The marker lists the platforms with numba wheels; elsewhere the plugin runs on numpy alone.
 dependencies = ["numba>=0.67,<1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'linux' and platform_machine == 'x86_64' and 'android' not in platform_release) or (sys_platform == 'linux' and platform_machine == 'aarch64' and 'android' not in platform_release) or (sys_platform == 'win32' and platform_machine == 'AMD64') or (sys_platform == 'win32' and platform_machine == 'ARM64')"]
