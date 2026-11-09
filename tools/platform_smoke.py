@@ -48,6 +48,7 @@ sys.path.insert(1, str(REPO / "tests"))      # the suite's helpers (support, sup
 WORKER_MARK = "chimera_vocal.worker"         # in the command line of every render worker (scheduler BOOTSTRAP)
 SPAWNED: list[int] = []                      # pid of every worker the scheduler started in this process
 SPAWNED_WORKERS: list = []                   # the same workers (to end the ones a failed probe leaves behind)
+SEEN_INTERPRETERS: set[int] = set()          # every worker process seen in the process table (launcher children too)
 TAG_VAR = "CHIMERA_SMOKE_TAG"                # set once per run; workers inherit it (scheduler copies os.environ)
 BASELINE: set[int] = set()                   # worker processes that existed before this run
 HELLO = "Hello world."
@@ -124,14 +125,14 @@ def pid_state(pid: int) -> str:
     return "zombie" if out.startswith("Z") else "alive"
 
 
-def sweep() -> list[str]:
-    """Every running process (other than this one) whose command line names the render worker module. Catches
-    workers the pid bookkeeping cannot see, e.g. the real interpreter behind a Windows venv launcher. On Linux and
-    macOS only processes that inherited this run's tag count (other test runs on the same machine are not ours);
-    processes that existed before this run started are ignored everywhere."""
+def worker_procs() -> dict[int, int]:
+    """{pid: parent pid} of every running process (other than this one) whose command line names the render worker
+    module - launchers and the interpreters they start alike (on Windows a venv's python.exe is a launcher whose child
+    is the real interpreter). On Linux and macOS only processes that inherited this run's tag count (other test runs
+    on the same machine are not ours); processes that existed before this run started are ignored everywhere."""
     me = os.getpid()
     tag = f"{TAG_VAR}={os.environ.get(TAG_VAR, '')}"
-    found: list[str] = []
+    found: dict[int, int] = {}
     if sys.platform.startswith("linux"):
         for d in Path("/proc").iterdir():
             if not d.name.isdigit() or int(d.name) == me or int(d.name) in BASELINE:
@@ -141,25 +142,88 @@ def sweep() -> list[str]:
                 if WORKER_MARK not in cmd:
                     continue
                 env = (d / "environ").read_bytes().split(b"\0")
-            except OSError:
+                ppid = int((d / "stat").read_text().rsplit(")", 1)[1].split()[1])
+            except (OSError, ValueError, IndexError):
                 continue
             if tag.encode() in env:
-                found.append(f"{d.name} {cmd[:60]!r}")
+                found[int(d.name)] = ppid
         return found
     if os.name == "nt":
         ps = ("Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and "
               "$_.CommandLine.Contains('" + WORKER_MARK + "') } | ForEach-Object { \"$($_.ProcessId) "
-              "$($_.ParentProcessId) $($_.Name)\" }")
+              "$($_.ParentProcessId)\" }")
         out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
                              capture_output=True, text=True).stdout
-        return [ln.strip() for ln in out.splitlines() if ln.strip() and int(ln.split()[0]) not in BASELINE]
-    out = subprocess.run(["ps", "-axwwE", "-o", "pid=,command="], capture_output=True, text=True).stdout
+        for ln in out.split("\n"):
+            parts = ln.split()
+            if len(parts) == 2 and parts[0].isdigit() and int(parts[0]) not in BASELINE:
+                found[int(parts[0])] = int(parts[1])
+        return found
+    out = subprocess.run(["ps", "-axwwE", "-o", "pid=,ppid=,command="], capture_output=True, text=True).stdout
     for ln in out.splitlines():
-        parts = ln.strip().split(None, 1)
-        if (len(parts) == 2 and parts[0].isdigit() and int(parts[0]) != me and int(parts[0]) not in BASELINE
-                and WORKER_MARK in parts[1] and tag in parts[1]):
-            found.append(f"{parts[0]} {parts[1][:60]!r}")
+        parts = ln.strip().split(None, 2)
+        if (len(parts) == 3 and parts[0].isdigit() and int(parts[0]) != me and int(parts[0]) not in BASELINE
+                and WORKER_MARK in parts[2] and tag in parts[2]):
+            found[int(parts[0])] = int(parts[1])
     return found
+
+
+def sweep() -> list[str]:
+    """``worker_procs()`` as "pid parent=ppid" lines (empty: no worker process left)."""
+    return [f"{p} parent={pp}" for p, pp in sorted(worker_procs().items())]
+
+
+def interpreters(pids: list[int]) -> list[int]:
+    """The started processes plus their children that run the worker (the real interpreters behind a venv
+    launcher). Every pid in the result must be gone once the workers ended."""
+    procs = worker_procs()
+    return sorted(set(pids) | {p for p, pp in procs.items() if pp in set(pids)})
+
+
+def all_ended(pids: list[int]) -> bool:
+    """Every pid is gone (and reaped). Windows hands out pids again quickly, so there a pid that is alive but no
+    longer runs the worker (not in the process table with the worker's command line) counts as ended too."""
+    states = {p: pid_state(p) for p in pids}
+    if all(st == "gone" for st in states.values()):
+        return True
+    if os.name != "nt":
+        return False
+    procs = worker_procs()
+    return all(st == "gone" or p not in procs for p, st in states.items())
+
+
+def job_membership(eng) -> dict:
+    """Windows: for every live worker of ``eng``, is the started process - and each interpreter it started - in the
+    worker's job object (IsProcessInJob)? {} elsewhere."""
+    if os.name != "nt":
+        return {}
+    import ctypes
+    from ctypes import wintypes
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+
+    def in_job(pid: int, job: int) -> bool | None:
+        h = k32.OpenProcess(0x1000, False, pid)              # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return None
+        try:
+            r = wintypes.BOOL()
+            return bool(r.value) if k32.IsProcessInJob(h, wintypes.HANDLE(job), ctypes.byref(r)) else None
+        finally:
+            k32.CloseHandle(h)
+
+    procs = worker_procs()
+    out = {}
+    with eng.scheduler._lock:
+        ws = list(eng.scheduler._busy) + list(eng.scheduler._idle)
+    for w in ws:
+        if not w.job_handle:
+            out[str(w.pid)] = "no job object"
+            continue
+        out[str(w.pid)] = {"started": in_job(w.pid, w.job_handle),
+                           "children": {str(c): in_job(c, w.job_handle) for c, pp in procs.items() if pp == w.pid}}
+    return out
 
 
 LIVE_ENGINES: list = []                      # for the hang report
@@ -393,6 +457,14 @@ def phase_score(rep: Report, eng, kernel: str, out: Path, work: Path, keep: dict
     rep.check(f"{kernel} score: kernel used", all(s.kernel == kernel for s in stats), str([s.kernel for s in stats]))
     pids = {s.worker_pid for s in stats}
     rep.check(f"{kernel} score: two voices on two worker processes", len(pids) == 2 and None not in pids, str(pids))
+    tree = interpreters(SPAWNED)
+    SEEN_INTERPRETERS.update(tree)
+    rep.data[f"{kernel}_score_pids"] = {"reported": sorted(pids), "launcher_children": sorted(set(tree) - set(SPAWNED))}
+    rep.check(f"{kernel} score: RenderStats.worker_pid names a running worker interpreter", pids <= set(tree),
+              f"reported {sorted(pids)}, worker processes {tree}")
+    jm = job_membership(eng)
+    if jm:
+        rep.data[f"{kernel}_job_membership"] = jm
 
     x0, e0 = sinks[0].data, entry[0]
     rep.check(f"{kernel} score: voice 1 starts at block 0, length = native", jobs[0].start_block == 0 and
@@ -464,6 +536,9 @@ def phase_cancel(rep: Report, eng, kernel: str, out: Path, work: Path) -> None:
     seen_by_sweep = sweep()
     rep.check(f"{kernel} cancel: the process sweep sees the running workers (control for the sweep checks)",
               len(seen_by_sweep) >= len(busy) >= 2, f"{len(seen_by_sweep)} found: {seen_by_sweep[:4]}")
+    tree = interpreters(busy)
+    SEEN_INTERPRETERS.update(tree)
+    rep.data[f"{kernel}_cancel_processes"] = {"started": busy, "with_interpreters": tree}
     t0 = time.monotonic()
     ev.set()
     th.join(30)
@@ -471,9 +546,9 @@ def phase_cancel(rep: Report, eng, kernel: str, out: Path, work: Path) -> None:
     exc = box.get("exc")
     rep.check(f"{kernel} cancel: render_score raised RenderCancelled", isinstance(exc, RenderCancelled) and
               not th.is_alive(), repr(exc) if exc else ("still running" if th.is_alive() else "finished"))
-    gone = wait_until(lambda: all(pid_state(p) == "gone" for p in busy), 10, 0.05)
-    rep.check(f"{kernel} cancel: the rendering workers ended and were reaped", gone is not None,
-              str({p: pid_state(p) for p in busy}))
+    gone = wait_until(lambda: all_ended(tree), 10, 0.05)
+    rep.check(f"{kernel} cancel: the rendering workers ended and were reaped, interpreters included", gone is not None,
+              str({p: pid_state(p) for p in tree}))
     rep.check(f"{kernel} cancel: no output or temporary file left",
               not (out / f"cancel-{kernel}.wav").exists() and not tmp_leftovers(out, tmp), str(tmp_leftovers(out, tmp)))
 
@@ -498,10 +573,12 @@ def phase_host_kill(rep: Report, work: Path, cache: Path) -> None:
     th.join(180)
     pids = box.get("pids") or []
     rep.check("host: child host started two rendering workers", len(pids) >= 2, str(pids))
+    pids = interpreters(pids)
+    rep.data["host_worker_processes"] = pids
     child.kill()
     child.wait()
     err = child.stderr.read()[-2000:] if child.stderr else ""
-    gone = wait_until(lambda: all(pid_state(p) != "alive" for p in pids), 10, 0.05)
+    gone = wait_until(lambda: all(pid_state(p) != "alive" for p in pids) or all_ended(pids), 10, 0.05)
     rep.data["host_workers_end_s"] = round(gone, 2) if gone is not None else None
     rep.check("host: workers end after the host was killed", gone is not None and bool(pids),
               f"{ {p: pid_state(p) for p in pids} } {err[-300:] if gone is None else ''}")
@@ -605,9 +682,11 @@ def main() -> int:
         for eng in engines:
             eng.shutdown()
         engines.clear()
-        ended = wait_until(lambda: all(pid_state(p) == "gone" for p in SPAWNED), 10, 0.05)
-        rep.check("shutdown: every worker started here ended and was reaped", ended is not None,
-                  f"{len(SPAWNED)} workers; " + str({p: pid_state(p) for p in SPAWNED if pid_state(p) != 'gone'}))
+        every = sorted(set(SPAWNED) | SEEN_INTERPRETERS)
+        ended = wait_until(lambda: all_ended(every), 10, 0.05)
+        rep.check("shutdown: every worker process started here ended and was reaped, interpreters included",
+                  ended is not None, f"{len(SPAWNED)} started, {len(every)} with interpreters; "
+                  + str({p: pid_state(p) for p in every if pid_state(p) != 'gone'}))
         left = wait_until(lambda: not sweep(), 15, 0.5)
         rep.check("shutdown: no worker process left (process sweep)", left is not None, str(sweep()))
         rep.data["workers_spawned"] = len(SPAWNED)
