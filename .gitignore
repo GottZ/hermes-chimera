@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+# numba on-disk cache (index + compiled objects)
+*.nbi
+*.nbc
+# rendered audio stays out of the repository (test fixtures under tests/ are allowed)
+*.wav
+!tests/**/*.wav
+*.mp3

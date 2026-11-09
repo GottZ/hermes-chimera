@@ -1,0 +1,17 @@
+[project]
+name = "hermes-plugin-chimera"
+version = "0.1.0"
+description = "Physically modelled singing and speaking voices for Hermes (port of chimera-vocal-synth)"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = ["numpy>=2.3.2,<3"]          # first cp314 wheels: 2.3.2 (E1-work/runtime/REPORT.md §4.3)
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "slow: needs > 10 s CPU on the numpy backend (run with numba or nightly)",
+    "numba: needs numba importable",
+    "lab: needs CHIMERA_LAB_REFS pointing at full-length reference renders (not in the repo)",
+    "hermes: needs a Hermes checkout/venv (HERMES_UPSTREAM) for integration tests",
+]

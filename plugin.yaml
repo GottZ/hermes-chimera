@@ -1,0 +1,24 @@
+manifest_version: 2
+name: chimera
+version: 0.1.0
+description: >-
+  Physically modelled singing and speaking voices running locally on the CPU: an English text-to-speech
+  provider and multi-voice music rendering from scores (Python port of chimera-vocal-synth).
+author: Jan-Stefan Janetzky
+license: MIT
+requires_hermes: ">=0.21.6"
+platforms: [linux, macos, windows]
+tags: [voice, tts, music, singing, audio, local]
+provides_tools: [chimera_render, chimera_check, chimera_speak, chimera_job]
+config_keys: [tts.voice, tts.chimera]          # honoured from v0.22.6; older Hermes logs "unknown field" and loads
+config_schema:
+  voice:      {type: str, default: "", description: "Chimera voice for spoken replies (empty = tts.voice or 'male')",
+               choices: ["", male, female, child, androgynous, teen, male-deep, female-bright, narrator,
+                         whisper, male-whisper, robot, elder]}
+  backend:    {type: str, default: auto, choices: [auto, numba, numpy],
+               description: "Synthesis backend; auto = numba when installed, else numpy"}
+  workers:    {type: int, default: 0, description: "Render worker processes (0 = min(4, max(2, CPUs-1))); one is kept for speech"}
+  text_prep:  {type: bool, default: true, description: "Expand numbers, abbreviations and accents before reading"}
+  music_format: {type: str, default: auto, choices: [auto, wav, mp3], description: "auto = mp3 when ffmpeg exists"}
+  keep_days:  {type: int, default: 7, description: "Delete rendered chimera audio older than this (0 = keep)"}
+  max_voices: {type: int, default: 8, description: "Largest ensemble one score may have"}
