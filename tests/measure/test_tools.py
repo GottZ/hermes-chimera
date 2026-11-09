@@ -1,5 +1,6 @@
-"""Self-tests of the C4 measurement tools (tests/support/pitch.py) on synthetic signals with known truth.
-Red proof of the f0 tool: naked YIN reports the octave above on an H2-dominant tone (E1 pitch-range report)."""
+"""Self-tests of the measurement tools (tests/support/pitch.py) on synthetic signals with known truth.
+Red proof of the f0 tool: naked YIN reports the octave above on an H2-dominant tone (sung /ɑ/ of
+the native template has H2 11-18 dB above H1)."""
 
 from __future__ import annotations
 
@@ -102,7 +103,8 @@ def test_compare_split_identity_and_shift():
     assert m.env_p95_db == 0 and m.f0_p90_ct == 0 and m.f0_onset_p90_ct == 0 and m.third_rms_db == 0
     assert m.octave_fixed == 0 and m.bands_excluded == 0
     y = held(205.0 * 2 ** (30 / 1200), 2.0)
-    # p90 over frames carries the frame-level YIN spread (window 1024 as E1-A): 30 ct shift reads 30–36 ct
+    # p90 over frames carries the frame-level YIN spread (window 1024 as in the phrase-split study): 30 ct shift
+    # reads 30–36 ct
     assert compare_split(x, y, fmin=100, fmax=500).f0_p90_ct == pytest.approx(32, abs=5)
 
 
@@ -140,7 +142,7 @@ def _noise_like(x: np.ndarray, seed: int = 1) -> np.ndarray:
 
 
 def test_compare_split_refuses_an_empty_population():
-    """R2A-19: no frame voiced in both signals (tone vs noise) must not read 0 ct and pass - it is an error; so is an
+    """No frame voiced in both signals (tone vs noise) must not read 0 ct and pass - it is an error; so is an
     onset window without common voiced frames."""
     x = held(205.0, 2.0)
     with pytest.raises(ValueError, match="voiced in both"):
@@ -153,7 +155,7 @@ def test_compare_split_refuses_an_empty_population():
 
 def test_compare_split_reports_voicing_disagreement():
     """A render that loses its voicing (second half noise) keeps f0 p90 at 0 over the frames voiced in both; the
-    voicing disagreement shows it (E1-A band 0.010/0.032, K-4.8/K-4.10 check it)."""
+    voicing disagreement shows it (phrase-split study band 0.010/0.032; K-4.8/K-4.10 check it)."""
     x = held(205.0, 2.0)
     half = x.copy()
     half[48000:] = _noise_like(x)[48000:]

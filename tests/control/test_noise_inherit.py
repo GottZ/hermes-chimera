@@ -1,5 +1,5 @@
 """K-2.12: filter-state inheritance of the noise sources (network.rs:725-745 `find` = FIRST match on (src, fwd);
-human_voice.rs:468-474 two set_noise_sources calls in a block with contact re-application; REVIEW-1 P1-01).
+human_voice.rs:468-474 two set_noise_sources calls in a block with contact re-application).
 
 Constructed cases (exact) plus a replay over every block of the four V3 tracks: for each block, the composition of
 its calls (list A from `list_a` where exported, then the final list) against the previous block's final list must
@@ -40,7 +40,7 @@ def test_reapply_with_identical_lists():
 
 
 def test_pair_in_previous_and_final_but_not_in_a_resets():
-    """(src, fwd) in P ∩ B but not in A: the state was dropped by the first call -> -1 (the P1-01 case;
+    """(src, fwd) in P ∩ B but not in A: the state was dropped by the first call -> -1 (the critical case;
     'final list against the previous block' would wrongly give 1)."""
     from chimera_vocal.control.airway import block_inherit, inherit_from
 
@@ -68,7 +68,8 @@ def test_first_match_on_duplicate_pairs():
 def test_track_replay_all_blocks(c2):
     """Every block of the four V3 tracks: block_inherit(final list of b-1, calls of b) == noise_inherit[b]; calls =
     [A, B] where the export lists an intermediate list A that differs from B, else [B]. Block 0 inherits from the
-    list of `initial`. Also: the P1 rule reproduces the exported wrong values at the critical blocks."""
+    list of `initial`. Also: the rule 'final list against the previous block' reproduces the exported wrong values
+    at the critical blocks."""
     from chimera_vocal.control.airway import block_inherit, inherit_from
 
     checked = 0

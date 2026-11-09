@@ -5,7 +5,7 @@
 ``crates/chimera/src/phonetics/{vowel,consonant}Targets.generated.json``. ``EnglishG2P.default()`` loads the
 dictionary lazily, once per process, thread-safe, in under 1 s.
 
-Red proof (TESTPLAN): ship the gzip file instead of the text.
+Red proof: ship the gzip file instead of the text.
 """
 
 import hashlib

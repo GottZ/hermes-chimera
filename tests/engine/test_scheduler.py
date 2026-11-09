@@ -1,4 +1,4 @@
-"""K-5.4 test_scheduler (TESTPLAN L5, INTERFACES §9.1, P1-09/P1-12): the reserved speech slot (a speech job starts at
+"""K-5.4 test_scheduler: the reserved speech slot (a speech job starts at
 once while music fills every music slot), the limit of concurrent renders, FIFO within a priority, one kernel per
 request, an error inside a job. Red proof: one common queue for speech and music."""
 

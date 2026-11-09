@@ -1,10 +1,9 @@
-"""Smaller fixes of the Hermes binding from REVIEW-2A: live settings (R2A-04), credentials in the install id
-(R2A-10), provider output next to user files (R2A-11), the CLI warm-up wait (R2A-07, CLI part), and the faithful
-speech switch (REVIEW-2B R2B-02, binding part).
+"""Smaller fixes of the Hermes binding: live settings, credentials in the install id, provider output next to user
+files, the CLI warm-up wait after a failed self-test, and the faithful speech switch (binding part).
 
-Red proofs (9a616be): R2A-04 first config wins (no ``apply_settings`` call); R2A-10 only http(s) cleaned; R2A-11
-``<stem>.wav`` opened with "wb"; R2A-07 the CLI waits up to 900 s for ready|failed while the state stays cold;
-R2B-02 no switch.
+Red proofs (9a616be): live settings - the first config wins (no ``apply_settings`` call); install id - only http(s)
+sources cleaned; provider output - ``<stem>.wav`` opened with "wb"; CLI warm-up - the CLI waits up to 900 s for
+ready|failed while the state stays cold; faithful speech - no switch exists.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ def _no_ffmpeg(monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda name, *a, **k: None)
 
 
-# --- R2A-04 ---------------------------------------------------------------------------------------------------
+# --- live settings --------------------------------------------------------------------------------------------
 
 def test_changed_settings_reach_the_engine(registered, plugin, tool):
     registered.settings.update(backend="auto", workers=2, text_prep=True, max_voices=8)
@@ -38,7 +37,7 @@ def test_changed_settings_reach_the_engine(registered, plugin, tool):
     assert (last.backend, last.workers, last.text_prep, last.max_voices) == ("numpy", 3, False, 2)
 
 
-# --- R2A-10 ---------------------------------------------------------------------------------------------------
+# --- credentials in the install id ----------------------------------------------------------------------------
 
 @pytest.mark.parametrize("raw,shown", [
     ("ssh://git:SECRET@example.org/o/r.git", "ssh://example.org/o/r.git"),
@@ -57,7 +56,7 @@ def test_install_source_has_no_credentials(plugin, raw, shown):
     assert clean == shown
 
 
-# --- R2A-11 ---------------------------------------------------------------------------------------------------
+# --- provider output next to user files -----------------------------------------------------------------------
 
 def test_provider_never_overwrites_a_users_wav(registered, plugin, tmp_path):
     prov = registered.tts_providers[0]
@@ -76,7 +75,7 @@ def test_provider_never_overwrites_a_users_wav(registered, plugin, tmp_path):
     assert not (tmp_path / "fail.wav").exists()
 
 
-# --- R2A-07 (CLI) ---------------------------------------------------------------------------------------------
+# --- CLI warm-up wait -----------------------------------------------------------------------------------------
 
 def _cli(registered, argv):
     parser = argparse.ArgumentParser(prog="hermes chimera")
@@ -105,7 +104,7 @@ def test_status_shows_reason_of_a_cold_state(registered, plugin):
     assert "timed out waiting for the warm-up lock" in out and "/chimera warmup" in out
 
 
-# --- R2B-02 (binding) -----------------------------------------------------------------------------------------
+# --- faithful speech switch (binding part) --------------------------------------------------------------------
 
 def test_faithful_setting_and_tool_parameter(registered, plugin, tool, tmp_path):
     eng = plugin.engine

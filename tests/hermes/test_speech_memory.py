@@ -1,4 +1,4 @@
-"""Speech has a memory bound in the Hermes process (REVIEW-2A R2A-02).
+"""Speech has a memory bound in the Hermes process.
 
 A fresh subprocess plays the Hermes host: fake public Hermes modules, the plugin loaded like Hermes loads it, the real
 engine package, render workers with FakeVoice (the host-side path - windows, assembly, WAV writing - is the real one).

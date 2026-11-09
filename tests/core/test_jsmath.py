@@ -1,4 +1,4 @@
-"""K-0.1, K-0.2, K-0.5 and the remaining scalar helpers of core.jsmath / core.nbmath (TESTPLAN L0)."""
+"""K-0.1, K-0.2, K-0.5 and the remaining scalar helpers of core.jsmath / core.nbmath."""
 
 import math
 
@@ -106,6 +106,6 @@ def test_pitch_conversions():
 
 
 def test_nbmath_is_the_implementation():
-    """jsmath re-exports the nbmath functions (single implementation, INTERFACES §4)."""
+    """jsmath re-exports the nbmath functions (single implementation)."""
     for name in ("js_min", "js_max", "js_round", "js_sign", "js_trunc_i32", "clamp", "smoothstep", "rng_next"):
         assert getattr(jm, name) is getattr(nb, name), name

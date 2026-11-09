@@ -1,4 +1,4 @@
-"""Comparison helpers for kernel state and audio (TESTPLAN §1: T3, T5, T6)."""
+"""Comparison helpers for kernel state and audio (tolerance classes T3, T5, T6)."""
 
 from __future__ import annotations
 

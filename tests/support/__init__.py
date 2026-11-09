@@ -1,7 +1,7 @@
-"""Shared test helpers (C0 owns this file; every cluster may import it as ``support``).
+"""Shared test helpers (every test package may import it as ``support``).
 
 Paths to the in-repo references, cached JSON loaders, the lab-reference location and the tolerance
-helpers of TESTPLAN §1 (T1n, T2, T3) with the template's own comparison semantics
+helpers of the classes T1n, T2 and T3 with the template's own comparison semantics
 (crates/chimera/tests/common/mod.rs ``rel``/``worst``/``compare_audio``). numpy is imported lazily.
 """
 
@@ -54,7 +54,7 @@ def f32(values: Sequence[float]):
     return np.asarray(values, dtype=np.float64).astype(np.float32)
 
 
-# --- tolerances (TESTPLAN §1) -------------------------------------------------------------------------
+# --- tolerances (classes T1n, T2, T3) -----------------------------------------------------------------
 
 def rel(a: float, b: float, floor: float) -> float:
     """Relative difference with an absolute floor; NaN == NaN (common/mod.rs ``rel``).
@@ -142,7 +142,7 @@ def assert_t3(reference, got, label: str = "") -> AudioDiff:
     return d
 
 
-# --- JIT-file rules (INTERFACES §6.4a; used by K-0 and K-3.13e) ------------------------------------------
+# --- JIT-file rules (used by K-0 and K-3.13e) ------------------------------------------------------------
 
 JIT_LINE = 'jit = globals().get("CHIMERA_JIT", lambda f: f)'
 

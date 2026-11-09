@@ -1,10 +1,10 @@
-"""The public faithful switch renders text sample for sample like the template (REVIEW-2B R2B-02; ``lab``, T3).
+"""The public faithful switch renders text sample for sample like the template (``lab``, T3).
 
 ``Engine.speak(text, body, faithful=True)`` against the native ``chimera render text`` renders of HEAD 092b16ce12b9
 (``$CHIMERA_LAB_REFS/ref-audio/text-{male,female,child}.wav``, float WAV): max |Δ| <= 1e-6 × peak over the whole
 file, length exact, for both kernels. ``speak_to_wav(..., faithful=True)`` writes the same audio as 16-bit PCM.
-The default (production) mode is measured against the same files to show the switch matters (correlation < 0.9 in
-R2B for text-male/child). Red proof: 9a616be has no switch; ``speak`` without it is not sample-equal (R2B 2c)."""
+The default (production) mode is measured against the same files to show the switch matters (measured
+correlation < 0.9 for text-male/child). Red proof: 9a616be has no switch; ``speak`` without it is not sample-equal."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ from support import assert_t3, compare_audio
 from support.fakes import real_engine_available, wait_until
 
 pytestmark = [pytest.mark.lab,
-              pytest.mark.skipif(not real_engine_available(), reason="real engine (C1–C3) - S3")]
-TEXT = "Hello there, my name is Chimera. Can you hear me?"     # ref-audio/manifest.md
+              pytest.mark.skipif(not real_engine_available(), reason="needs the real text, plan, control and dsp code")]
+TEXT = "Hello there, my name is Chimera. Can you hear me?"     # $CHIMERA_LAB_REFS/ref-audio/manifest.md
 
 
 @pytest.fixture(scope="module")

@@ -62,7 +62,7 @@ def numbers(obj):
 
 
 def is_rng_trim(cur, exp):
-    """cur keeps a prefix of every array of exp (the integrator's trim of rng.json)."""
+    """cur keeps a prefix of every array of exp (the repository trim of rng.json)."""
     try:
         for a, b in zip(cur["rng"], exp["rng"], strict=True):
             if a["seed"] != b["seed"] or any(numbers(a[k]) != numbers(b[k][:len(a[k])]) for k in a if k != "seed"):
@@ -77,8 +77,8 @@ def is_rng_trim(cur, exp):
 
 def write(name, obj):
     """Track files are always written. Any other file is written when absent or when its numbers equal the
-    export (only text fields may change). rng.json, trimmed by the integrator after export (README "Repository
-    trims by the integrator"), keeps its trim and its `note`: only its `source` text is replaced in place. The
+    export (only text fields may change). rng.json, trimmed in the repository after export (README "Repository
+    trims"), keeps its trim and its `note`: only its `source` text is replaced in place. The
     manifest records the repository file and the export."""
     path = os.path.join(REPO, name)
     data = dumps(obj).encode("utf-8")
@@ -95,7 +95,7 @@ def write(name, obj):
             new, st["repo_state"] = data, "written (numbers identical to the previous file, text fields updated)"
         elif name == "rng.json" and is_rng_trim(cur, obj):
             cur["source"] = obj["source"]
-            new, st["repo_state"] = dumps(cur).encode("utf-8"), "source text replaced in place (repository copy trimmed by the integrator; trim, note and numbers kept)"
+            new, st["repo_state"] = dumps(cur).encode("utf-8"), "source text replaced in place (repository copy trimmed after export; trim, note and numbers kept)"
         else:
             new, st["repo_state"] = None, "kept: numbers differ from the export, not overwritten"
             check(f"{name}: repository numbers differ from the export", False)
@@ -405,7 +405,7 @@ for s in SCENARIOS:
     track_sizes[s] = files[f"track-{s}.json"][1]
 check("track budget: all track-*.json <= 520 KB", sum(track_sizes.values()) <= BUDGET["track"], track_sizes)
 
-# ---------------------------------------------------------------- self-check summary + envelope of the P1 counter-check
+# ---------------------------------------------------------------- self-check summary + envelope of the counter-check
 
 
 def read_f32(path):
@@ -517,7 +517,7 @@ producer = {
     "topology.json": "exporter (public fields, linear_elements) + track-exporter (private network/voice/glottis state accessors)",
 }
 manifest = {
-    "fragment": "S0-V rust vectors",
+    "fragment": "rust vectors",
     "template_commit": UPSTREAM_HEAD,
     "exporter_commit": head,
     "exporter_repo": LAB,

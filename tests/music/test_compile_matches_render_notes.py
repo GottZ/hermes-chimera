@@ -1,11 +1,11 @@
-"""K-5.2 test_compile_matches_render_notes (TESTPLAN L5): a score equivalent to a ``chimera render notes`` input
+"""K-5.2 test_compile_matches_render_notes: a score equivalent to a ``chimera render notes`` input
 compiles to exactly the job the CLI renders (render.rs:481-575): same source, same gestures (plan_song per phrase,
 phrases split at rests, phrase start = time of its first note, t accumulated note by note), same length
 js_round(48000·(end + 0.4)), start_block 0, template seeds. Red proof: split phrases at phraseEnd instead of rests.
 
 Inputs: copies of the template-CLI inputs of the reference renders (``data/render-notes-*.json`` =
-``$CHIMERA_LAB_REFS/ref-audio/inputs/*.json``, byte-identical). The ``stub`` planner runs in S1/S2,
-the ``real`` planner (C1) once the clusters are merged (S3)."""
+``$CHIMERA_LAB_REFS/ref-audio/inputs/*.json``, byte-identical). The ``stub`` planner always runs, the ``real``
+planner (text and plan packages) when the real engine is importable (``real_engine_available``)."""
 
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ def planner(request):
     if request.param == "stub":
         return request.getfixturevalue("stub_planner")
     if not real_engine_available():
-        pytest.skip("real planner (C1) not merged yet - runs in S3")
+        pytest.skip("needs the real planner (text and plan packages)")
     set_planner_api(None)
     return None
 

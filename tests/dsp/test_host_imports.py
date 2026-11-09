@@ -1,6 +1,7 @@
-"""K-3.17 test_host_never_imports_numba (REVIEW-1 P1-11): with numba installed, the host-side calls never import
-numba (or llvmlite). C3 part: everything a host does with the acoustics package (import, cache folder, marker
-check, numpy render, numpy self-test). S3 part: the Engine API (speak, render_score, status, warmup)."""
+"""K-3.17 test_host_never_imports_numba: with numba installed, the host-side calls never import numba (or
+llvmlite); numba runs in render workers only. Acoustics part: everything a host does with the acoustics package
+(import, cache folder, marker check, numpy render, numpy self-test). Engine part: the Engine API (speak,
+render_score, status, warmup)."""
 
 from __future__ import annotations
 
@@ -80,10 +81,10 @@ print(json.dumps({"numba": "numba" in sys.modules, "llvmlite": "llvmlite" in sys
 
 
 def test_host_never_imports_numba_engine(tmp_path):
-    """S3: Engine.speak/render_score/status/warmup leave numba out of the host process."""
+    """Engine.speak/render_score/status/warmup leave numba out of the host process."""
     import chimera_vocal
     if not hasattr(chimera_vocal, "get_engine"):
-        pytest.skip("S3: needs C4's Engine API")
+        pytest.skip("needs the Engine API (chimera_vocal.get_engine)")
     r = dsp_numba.run_script(HOST_ENGINE, str(tmp_path / "cache"), timeout=3600)
     assert r.returncode == 0, r.stderr[-5000:]
     seen = json.loads(r.stdout.strip().splitlines()[-1])

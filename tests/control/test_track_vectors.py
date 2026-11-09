@@ -2,8 +2,8 @@
 
 Float fields (tube_area, tube_min, tube_len, velum_area, noise_par, glot_par, p_lung) T2 at the exported float blocks;
 the voice clock T2 there; integer fields noise_n / noise_idx / noise_inherit T2i (exact) over ALL blocks. The
-P1-critical blocks (hello-male 626, stop-male 1857, song-female 17 blocks) are where `noise_inherit` differs from
-"final list against the previous block" -- the red target of REVIEW-1 P1-01.
+critical blocks (hello-male 626, stop-male 1857, song-female 17 blocks) are where `noise_inherit` differs from
+"final list against the previous block" -- the shortcut these tests must catch.
 
 The lab variant compares every field of every block (plus articulator state, contacts, gate, glide f0) against the
 full exports in $CHIMERA_LAB_REFS/tracks.
@@ -84,7 +84,8 @@ def test_track_vectors(c2, scenario, impl_name):
 
 
 def test_p1_targets_are_in_the_vectors(c2):
-    """The red target exists: the P1 rule really differs from noise_inherit at the critical blocks of the files."""
+    """The red target exists: the rule 'final list against the previous block' really differs from noise_inherit
+    at the critical blocks of the files."""
     from_files = {}
     for s in c2.TRACK_SCENARIOS:
         trk = c2.decode_track(s)
@@ -102,8 +103,7 @@ LAB_CASES = [pytest.param("sustain-aa-male"), pytest.param("hello-male"),
 # Velocities (cm/s) decay towards 0, where the port and the template differ by rounding of the position-scale
 # arithmetic: at most 8.9e-14 cm/s absolute over all four full exports. With the T2 floor 1e-6 the correct port is red
 # (sustain-aa-male 9 values up to 7.9e-9 rel, song-female 87 values up to 1.6e-8 rel); the smallest floor that keeps
-# it green is 1.58e-5 (song-female). 1e-4 keeps a factor 6 and still sees an absolute error of 1e-13 cm/s
-# (S4-TS, lab/s4-ts/scripts/artic_v_floor.py; TESTPLAN "Änderungen S4").
+# it green is 1.58e-5 (song-female). 1e-4 keeps a factor 6 and still sees an absolute error of 1e-13 cm/s.
 ARTIC_V_FLOOR = 1e-4
 
 

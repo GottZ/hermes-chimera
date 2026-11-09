@@ -1,4 +1,4 @@
-"""K-4.3 test_ref_renders (TESTPLAN L4, S3 mandatory, ``lab``, both kernels): the port renders the template's
+"""K-4.3 test_ref_renders (``lab``, real engine, both kernels): the port renders the template's
 reference files (``$CHIMERA_LAB_REFS/ref-audio``, native CLI renders of HEAD 092b16ce12b9) in the template-faithful mode (``settle_first=False``,
 ``start_block = 0``) to T3 over the WHOLE file (max |Δ| <= 1e-6 × peak, length exact). Renders go through a real
 render worker (RenderScheduler) for both kernels. Red proof: tail 0.4 s instead of 0.3 s for ``text``."""
@@ -19,7 +19,7 @@ from support import REPO_ROOT, assert_t3, golden
 from support.fakes import real_engine_available
 
 pytestmark = [pytest.mark.lab,
-              pytest.mark.skipif(not real_engine_available(), reason="real engine (C1–C3) - S3")]
+              pytest.mark.skipif(not real_engine_available(), reason="needs the real engine")]
 DATA = Path(__file__).resolve().parents[1] / "music" / "data"
 SPEECH_TEXT = "Hello there, my name is Chimera. Can you hear me?"
 VOWELS = ["i", "e", "ɛ", "æ", "ɑ", "ɔ", "o", "u", "ʌ", "ɝ"]

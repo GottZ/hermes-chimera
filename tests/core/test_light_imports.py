@@ -1,4 +1,4 @@
-"""INTERFACES §1 rule 1: importing the package and the numpy-free core modules never imports numpy/numba."""
+"""Importing the package and the numpy-free core modules never imports numpy/numba."""
 
 import subprocess
 import sys

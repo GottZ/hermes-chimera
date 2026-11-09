@@ -1,4 +1,4 @@
-"""K-5.11 test_runtime_registry (TESTPLAN L5, INTERFACES §9.4, P1-25): two copies of the package under different
+"""K-5.11 test_runtime_registry: two copies of the package under different
 names in one process (Hermes loads one plugin copy per profile scope) share Engine, scheduler and jobs when their key
 (version + code hash) is equal; another key gets its own runtime. get_engine: first config wins; reconfigure
 replaces. Runs in a fresh interpreter (the registry is process-global under ``_chimera_runtime``)."""

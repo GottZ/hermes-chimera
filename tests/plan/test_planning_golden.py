@@ -2,7 +2,7 @@
 98 plan_utterance, 24 Klatt duration sets, 4 plan_phrases, 7 plan_song, 23 live notes (on/off/melisma).
 Gesture ORDER is part of the contract: the voice mixes overlapping gestures in list order (docs/rust-engine.md).
 
-Red proof (TESTPLAN): emit the gestures sorted by channel.
+Red proof: emit the gestures sorted by channel.
 Plus K-1.5b (mixed bodies, not covered by the goldens): vowel_artic between presets is ArticPatch::blend
 of the presets' articulations (planner.rs:74-91, anatomy/human.rs:218-237), bit-exact.
 """

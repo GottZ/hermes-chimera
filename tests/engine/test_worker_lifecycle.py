@@ -1,4 +1,4 @@
-"""K-5.5 test_worker_lifecycle (TESTPLAN L5, INTERFACES §9.1/§9.3, P1-08): frames, 10-MB pieces, crash -> one
+"""K-5.5 test_worker_lifecycle: frames, 10-MB pieces, crash -> one
 retry, two numba crashes => ``failed``, parent death => worker gone <= 2 s (EOF watch), cancel => worker ended and
 reaped, slot free <= 2 s, closing the ``speak_pcm16`` generator cancels the remaining windows.
 Red proof: EOF only checked at the next read (worker keeps rendering after its parent died)."""

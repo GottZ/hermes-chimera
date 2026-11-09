@@ -1,4 +1,4 @@
-"""K-5.6 test_estimate (TESTPLAN L5, INTERFACES §8.5): longest-processing-time assignment on workers − 1 music
+"""K-5.6 test_estimate: longest-processing-time assignment on workers − 1 music
 slots, RENDERED voice lengths (not the mix length), compile surcharge only while the numba marker is missing."""
 
 from __future__ import annotations

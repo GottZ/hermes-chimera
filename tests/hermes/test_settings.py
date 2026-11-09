@@ -1,4 +1,4 @@
-"""Configuration resolution (INTERFACES §10.3, §11.6; TESTPLAN K-6.5, K-6.9)."""
+"""Configuration resolution: voice, speed, engine config, tool deadline and wait budget (K-6.5, K-6.9)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def _ids(p):
     return p.id
 
 
-# K-6.5: plugin setting > tts.voice > male; a foreign voice warns once and falls back (rot: order swapped)
+# K-6.5: plugin setting > tts.voice > male; a foreign voice warns once and falls back (red proof: order swapped)
 def test_voice_resolution(plugin, ctx, caplog):
     s = plugin.mod("settings")
     assert _ids(s.resolve_voice(ctx, None)) == "male"
@@ -55,7 +55,7 @@ def test_resolve_speed(plugin):
         assert s.resolve_speed(bad, P["teen"]) == pytest.approx(1.05), bad
 
 
-# §10.3 engine_config: plugin settings, env wins, numba cache under <HERMES_HOME>/cache/chimera/numba
+# engine_config: plugin settings, env wins, numba cache under <HERMES_HOME>/cache/chimera/numba
 def test_engine_config(plugin, ctx, monkeypatch):
     s = plugin.mod("settings")
     cfg = s.engine_config(ctx)
@@ -96,7 +96,7 @@ def _tools(conc=None, seq=None):
 
 
 # K-6.9: deadline mirrors agent.deadline.resolve_timeout; budget = max(1, min(d - 45, 375)), d < 60 -> 0,
-# unbounded -> 1800 (rot: env var ignored)
+# unbounded -> 1800 (red proof: env var ignored)
 def test_deadline(plugin, monkeypatch):
     assert _deadline(plugin, monkeypatch=monkeypatch) == (420.0, 375.0)
     assert _deadline(plugin, _tools(120), monkeypatch=monkeypatch) == (120.0, 75.0)

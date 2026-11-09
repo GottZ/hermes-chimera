@@ -131,7 +131,7 @@ def test_topology_structure(label):
     assert bool(flags & L.F_JUNCTION_FLOOR) == c["enable_junction_floor"]
     assert bool(flags & L.F_ENERGY_SAFE) == c["energy_safe"]
     assert bool(flags & L.F_SYMMETRIC_KINETIC) == c["symmetric_kinetic"]
-    assert flags & L.F_FLUSH_SUBNORMALS, "subnormal flush must be on by default (DESIGN §2.9)"
+    assert flags & L.F_FLUSH_SUBNORMALS, "subnormal flush must be on by default"
     assert si[L.SI_NET_RNG] == 12345 and si[L.SI_ERROR] == 0
 
 

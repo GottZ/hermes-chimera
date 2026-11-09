@@ -1,4 +1,4 @@
-"""K-6.11: the plugin loads and explains itself without numpy (P1-19; DESIGN §10 first row)."""
+"""K-6.11: the plugin loads and explains itself without numpy (tools hidden, provider unavailable, restart hint)."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ print(json.dumps(out))
 
 
 # K-6.11: loads without numpy; is_available() False; check_fn False; status names restart and reinstall
-# (rot: numpy imported at module level)
+# (red proof: numpy imported at module level)
 def test_no_numpy(tmp_path):
     r = subprocess.run([sys.executable, "-I", "-c", PROBE, str(c5fakes.HERE), str(c5fakes.FAKEHERMES_DIR),
                         str(tmp_path)], capture_output=True, text=True, timeout=120)

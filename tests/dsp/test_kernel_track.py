@@ -65,7 +65,7 @@ def test_kernel_differential_heads(scenario, run):
 @pytest.mark.lab
 @pytest.mark.parametrize("scenario", rc.SCENARIOS)
 def test_kernel_differential_full(scenario, run):
-    """K-3.5 (T3, S2): numba vs numpy over the full V3 tracks."""
+    """K-3.5 (T3): numba vs numpy over the full V3 tracks (recorded control)."""
     trk = rc.track(scenario, full=True)
     a = run("numpy", "track_audio", scenario=scenario, n_out=trk.n_samples, full=True)
     b = run("numba", "track_audio", scenario=scenario, n_out=trk.n_samples, full=True)
@@ -73,10 +73,10 @@ def test_kernel_differential_full(scenario, run):
 
 
 @pytest.mark.numba
-@pytest.mark.skipif(not dsp_cases.control_available(), reason="S3: needs C2's ControlModel")
+@pytest.mark.skipif(not dsp_cases.control_available(), reason="needs the control package")
 @pytest.mark.parametrize("name", [s["name"] for s in support.golden("voice")])
 def test_kernel_differential_golden(name, run):
-    """K-3.5 (T3, S3): numba vs numpy over the template's golden voice scenarios in full length, real control."""
+    """K-3.5 (T3): numba vs numpy over the template's golden voice scenarios in full length, real control."""
     a = run("numpy", "golden", name=name)
     b = run("numba", "golden", name=name)
     dsp_assert.t3(a["audio"], b["audio"], f"golden {name} numba vs numpy")

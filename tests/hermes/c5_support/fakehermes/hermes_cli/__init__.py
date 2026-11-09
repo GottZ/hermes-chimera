@@ -1,1 +1,1 @@
-"""Fake Hermes package ``hermes_cli`` (C5 tests)."""
+"""Fake Hermes package ``hermes_cli`` (Hermes binding tests)."""

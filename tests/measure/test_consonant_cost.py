@@ -1,5 +1,5 @@
-"""K-4.11 test_consonant_cost (TESTPLAN L4, ``slow``, S3, report only, P1-24): RTF of both kernels on the
-consonant-rich P1 probe sentences against a held vowel. Writes ``consonant_cost.json`` to $CHIMERA_REPORT_DIR (or
+"""K-4.11 test_consonant_cost (``slow``, real engine, report only): RTF of both kernels on the consonant-rich
+probe sentences (``PROBES``) against a held vowel. Writes ``consonant_cost.json`` to $CHIMERA_REPORT_DIR (or
 the test's tmp dir) and prints it."""
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import pytest
 
 from support.fakes import real_engine_available
 
-pytestmark = [pytest.mark.slow, pytest.mark.skipif(not real_engine_available(), reason="real engine - S3")]
+pytestmark = [pytest.mark.slow, pytest.mark.skipif(not real_engine_available(), reason="needs the real engine")]
 PROBES = ["Stop at the top, Pat, and take the tea to the cat.", "Six sharp spikes split the stiff straps."]
 
 

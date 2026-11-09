@@ -3,7 +3,7 @@ name = "chimera-s0-exporter"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "S0 vector export from the unmodified upstream chimera crate (public API only)"
+description = "Vector export from the unmodified upstream chimera crate (public API only)"
 
 [workspace]
 

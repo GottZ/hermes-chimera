@@ -1,4 +1,4 @@
-"""K-5.8 test_worker_stray_output (TESTPLAN L5, INTERFACES §9.3): ``print()`` and raw writes to fd 1 inside the worker
+"""K-5.8 test_worker_stray_output: ``print()`` and raw writes to fd 1 inside the worker
 (third-party code, numba diagnostics) do not corrupt the protocol - fd 1 is redirected to stderr, the protocol runs
 on a duplicate of the original fd 1. Red proof: protocol on fd 1."""
 

@@ -1,14 +1,13 @@
-"""Jobs of the Hermes binding: profile context, caller binding, waiting and cancelling (REVIEW-2A R2A-06, R2A-08,
-R2A-09, R2A-13).
+"""Jobs of the Hermes binding: profile context, caller binding, waiting and cancelling.
 
-* R2A-06: a job runs in a copy of the caller's context, so a profile's HERMES_HOME (a context variable in Hermes)
-  decides where its audio lands; engine errors are recognised by class name, so a second plugin copy (one per
+* Profile context: a job runs in a copy of the caller's context, so a profile's HERMES_HOME (a context variable in
+  Hermes) decides where its audio lands; engine errors are recognised by class name, so a second plugin copy (one per
   profile, sharing the first copy's engine) still maps them. Red proof: plain ``threading.Thread`` and
   ``isinstance`` against the own copy's classes.
-* R2A-08: jobs are bound to ``conversation_id`` and ``session_id`` (released Hermes passes only the latter).
+* Caller binding: jobs are bound to ``conversation_id`` and ``session_id`` (released Hermes passes only the latter).
   Red proof: binding on ``conversation_id`` only - every session sees every job.
-* R2A-09: ``wait_s: 0`` returns at once. Red proof: ``requested or default`` (0 counts as "not given").
-* R2A-13: ``chimera_job`` with ``cancel: true`` stops a render. Red proof: no way to cancel.
+* Waiting: ``wait_s: 0`` returns at once. Red proof: ``requested or default`` (0 counts as "not given").
+* Cancelling: ``chimera_job`` with ``cancel: true`` stops a render. Red proof: no way to cancel.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""S1-V3fix evidence: compare the corrected full tracks (row b = after the complete control step b) with the
-pre-fix ones (row taken after the contact re-apply, before the breath/pitch part of the step).
+"""Evidence for the track-row correction: compare the corrected full tracks (row b = after the complete control
+step b) with the pre-fix ones (row taken after the contact re-apply, before the breath/pitch part of the step).
 Expected: every field identical in the same row, except p_lung, gate, f0_glide, glot_par[f0], glot_par[effort],
 which equal the pre-fix row b+1 (b < n-1). Usage: python3 -I compare_shift.py <old-dir> <new-dir>"""
 import json

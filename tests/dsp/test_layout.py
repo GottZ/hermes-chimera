@@ -1,4 +1,4 @@
-"""State layout and JIT manifest of the acoustics (INTERFACES §6.2, §6.4, §6.4a) — consistency checks."""
+"""State layout and JIT manifest of the acoustics (``dsp/layout.py``, ``dsp/jit_manifest.py``) — consistency checks."""
 
 from __future__ import annotations
 

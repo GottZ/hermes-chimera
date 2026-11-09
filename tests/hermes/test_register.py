@@ -1,4 +1,4 @@
-"""K-6.1 register(ctx) + tool schemas + manifest consistency (TESTPLAN L6; INTERFACES §2, §3a, §11.1, §13, §15)."""
+"""K-6.1 register(ctx) + tool schemas + manifest consistency (plugin.yaml, pyproject.toml, accel companion, skill)."""
 
 from __future__ import annotations
 
@@ -84,7 +84,8 @@ print(json.dumps({"numpy": "numpy" in sys.modules, "numba": "numba" in sys.modul
 """
 
 
-# K-6.1 (fresh interpreter): no numpy/numba import and no threads during register (rot: `import numpy` at module level)
+# K-6.1 (fresh interpreter): no numpy/numba import and no threads during register
+# (red proof: `import numpy` at module level)
 def test_register_imports_nothing_heavy():
     r = subprocess.run([sys.executable, "-I", "-c", REGISTER_PROBE, str(c5fakes.HERE), str(c5fakes.FAKEHERMES_DIR)],
                        capture_output=True, text=True, timeout=120, cwd=str(c5fakes.HERE))
@@ -109,7 +110,7 @@ def _walk(obj, path="$"):
             yield from _walk(v, f"{path}[{i}]")
 
 
-# INTERFACES §11.1: schema shape (no oneOf/$ref, required fields, MEDIA rule in the descriptions)
+# Schema shape (no oneOf/$ref, required fields, MEDIA rule in the descriptions)
 def test_tool_schemas(plugin):
     tools = plugin.mod("tools")
     assert set(tools.SCHEMAS) == TOOL_NAMES and set(tools.HANDLERS) == TOOL_NAMES
@@ -139,7 +140,7 @@ def test_tool_schemas(plugin):
         assert v in tools.SCHEMAS["chimera_speak"]["description"]
 
 
-# INTERFACES §2/§3/§3a: manifests and dependency declarations
+# Manifests (plugin.yaml, pyproject.toml, accel companion) and dependency declarations
 def test_manifests():
     main = (ROOT / "plugin.yaml").read_text(encoding="utf-8")
     assert re.search(r"^name: chimera$", main, re.M)

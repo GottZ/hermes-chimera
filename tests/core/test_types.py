@@ -1,4 +1,4 @@
-"""Serde round trips of the shared data types against goldens and vectors (frozen C0 API for C1/C2/C4)."""
+"""Serde round trips of the shared data types against goldens and vectors (frozen API of chimera_vocal.core)."""
 
 import pytest
 

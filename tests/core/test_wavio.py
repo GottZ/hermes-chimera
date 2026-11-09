@@ -1,4 +1,4 @@
-"""K-0.7: WAV writing exactly like chimera-cli/src/wav.rs:24-33 (P1-17)."""
+"""K-0.7: WAV writing exactly like chimera-cli/src/wav.rs:24-33."""
 
 import math
 import struct

@@ -1,4 +1,4 @@
-"""TTS provider (INTERFACES §10; TESTPLAN K-6.2, K-6.3, K-6.4, K-6.13)."""
+"""TTS provider (K-6.2, K-6.3, K-6.4, K-6.13)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def provider(registered):
 
 
 # K-6.2: ".mp3" -> "<stem>.wav" (RIFF, 16 bit, mono, 48 kHz); ".ogg" -> WAV bytes exactly there
-# (rot: WAV bytes under ".mp3")
+# (red proof: WAV bytes under ".mp3")
 def test_synthesize_paths(provider, plugin, tmp_path):
     out = tmp_path / "tts_20261109_141502.mp3"
     got = provider.synthesize("Hello world.", str(out), format="mp3")
@@ -40,7 +40,7 @@ def test_synthesize_paths(provider, plugin, tmp_path):
     assert [c["text"] for c in calls] == ["Hello world.", "Hi there.", "Hi there.", "No suffix.", "Already wav."]
 
 
-# §10 error mapping: TextError and any engine failure -> RuntimeError, never ValueError (Hermes would report a
+# Error mapping: TextError and any engine failure -> RuntimeError, never ValueError (Hermes would report a
 # configuration error, tools/tts_tool.py:456-461)
 @pytest.mark.parametrize("exc_name", ["TextError", "ScoreError", "BackendError", "ValueError", "OSError", "KeyError"])
 def test_synthesize_errors_are_runtime_errors(provider, plugin, tmp_path, exc_name):
@@ -54,7 +54,7 @@ def test_synthesize_errors_are_runtime_errors(provider, plugin, tmp_path, exc_na
     assert not (tmp_path / "a.mp3").exists()
 
 
-# K-6.3: voice_compatible from HERMES_SESSION_PLATFORM (rot: statically True)
+# K-6.3: voice_compatible from HERMES_SESSION_PLATFORM (red proof: statically True)
 @pytest.mark.parametrize("platform,expected", [
     ("telegram", True), ("Telegram", True), ("discord", True), ("matrix", True), ("feishu", True),
     ("whatsapp", True), ("signal", True), ("", False), ("cli", False), ("desktop", False), ("slack", False),
@@ -70,7 +70,7 @@ def _collect(provider, text, **kw):
 
 
 # K-6.4: int16 LE @ 48 000; 3 parallel calls = serial results; closing the generator frees the slot and cancels;
-# format "opus" -> NotImplementedError (rot: a buffer shared between calls)
+# format "opus" -> NotImplementedError (red proof: a buffer shared between calls)
 def test_stream_pcm(provider, plugin):
     eng = plugin.engine
     assert provider.streams_pcm is True
@@ -124,7 +124,7 @@ def test_stream_passes_resolved_voice_and_speed(provider, plugin, registered):
     assert call["speed"] == pytest.approx(1.25 * 0.92)
 
 
-# K-6.13: plugins.isolation host -> streams_pcm False, synthesize works (rot: class attribute True)
+# K-6.13: plugins.isolation host -> streams_pcm False, synthesize works (red proof: class attribute True)
 def test_plugin_host_mode(provider, monkeypatch, tmp_path):
     monkeypatch.setenv("HERMES_PLUGIN_HOST_PROCESS", "1")
     assert provider.streams_pcm is False
@@ -138,7 +138,7 @@ def test_plugin_host_mode(provider, monkeypatch, tmp_path):
     assert isinstance(owner.__dict__["streams_pcm"], property), "streams_pcm must be a property (read per reply)"
 
 
-# §10: voices, default voice, warm/release, availability
+# Voices, default voice, warm/release, availability
 def test_provider_catalog_and_lease(provider, plugin, registered):
     ids = [v["id"] for v in provider.list_voices()]
     assert ids == list(c5fakes.PRESET_TABLE)

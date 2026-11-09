@@ -1,4 +1,4 @@
-"""K-3.13 test_numba_cache_scoping (INTERFACES §6.4a): (a) all entry points with their real argument types in two
+"""K-3.13 test_numba_cache_scoping: (a) all entry points with their real argument types in two
 worker processes whose parent package names differ: cache hits, no ModuleNotFoundError; (b) a changed function in
 nbmath.py gives a new cache folder and a new result; (c) numba.config.CACHE_DIR and os.environ unchanged after
 loading; (d) an unwritable cache gives cache=False and a correct render; (e) AST rules of every JIT file."""
@@ -118,7 +118,8 @@ print(json.dumps({"cache_dir": backend.numba_cache_dir(base), "audio": res["audi
 @pytest.mark.numba
 def test_cache_changed_callee(tmp_path):
     """(b) Changing a function in nbmath.py (a callee in ANOTHER file than the kernel) changes the cache folder, so
-    the kernel is recompiled and the result changes (E1-B §2.6: same folder would return stale code)."""
+    the kernel is recompiled and the result changes (with the same folder numba would return stale code: its cache
+    does not see a changed callee in another file)."""
     import subprocess
     import sys
 

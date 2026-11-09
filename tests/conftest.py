@@ -1,11 +1,11 @@
-"""Shared pytest configuration (integrator-owned).
+"""Shared pytest configuration.
 
 * markers (registered in pyproject.toml): ``slow``, ``numba``, ``lab``, ``hermes`` -- skipped automatically
   when their precondition is missing:
     - ``slow``   runs only with ``--run-slow`` or ``CHIMERA_RUN_SLOW=1``
     - ``numba``  runs only when numba is installed (checked with find_spec: this process never imports numba;
-                 numba code runs in worker subprocesses, INTERFACES §6.4a)
-    - ``lab``    runs only when ``CHIMERA_LAB_REFS`` names a directory (full-length references, TESTPLAN §2.2)
+                 numba code runs in worker subprocesses)
+    - ``lab``    runs only when ``CHIMERA_LAB_REFS`` names a directory (full-length references, not in the repository)
     - ``hermes`` runs only when ``HERMES_UPSTREAM`` names a Hermes checkout
 * fixture ``kernel_name``: parametrizes a test over the two kernels ("numpy", "numba"); the numba case
   carries the ``numba`` marker.

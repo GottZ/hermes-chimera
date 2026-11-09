@@ -1,4 +1,4 @@
-"""``python -m chimera_vocal`` (REVIEW-2A R2A-12) and the marker write under a concurrent reader (R2A-17).
+"""``python -m chimera_vocal`` (``sing``, ``bench``) and the warm-up marker write under a concurrent reader.
 
 * ``sing --mp3`` is gone (the engine never runs ffmpeg; it always failed), ``bench --seconds`` sets the length of
   the held vowel. Red proof: 9a616be accepts ``--mp3`` and then raises; ``bench`` renders "ah." whatever

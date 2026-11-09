@@ -1,4 +1,4 @@
-"""K-5.10 test_mix_memory (TESTPLAN L5, P1-05): mixing 8 voices × 300 s (FakeVoice) raises the peak RSS of the host
+"""K-5.10 test_mix_memory: mixing 8 voices × 300 s (FakeVoice) raises the peak RSS of the host
 process by at most 64 MB, and the temporary files are gone afterwards - also after an abort. Red proof: collect the
 voices as a float64 list in memory (8 × 300 s × 48 000 × 8 B = 922 MB).
 

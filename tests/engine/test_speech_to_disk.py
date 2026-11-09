@@ -1,5 +1,5 @@
-"""Speech without a memory bound in the host process (REVIEW-2A R2A-02), the faithful switch (REVIEW-2B R2B-02) and
-temporary files under a chosen folder (R2A-05), with stub planner + FakeVoice workers.
+"""Speech written without holding the whole signal in the host process, the faithful switch and temporary files
+under a chosen folder, with stub planner + FakeVoice workers.
 
 * ``speak_to_wav`` writes the same bytes as ``speak(...)[0].to_wav`` (overlap-add from the window file in blocks,
   same float32 arithmetic as ``assemble``), ``speak_pcm16`` the same PCM, and both remove their temporary file.
@@ -130,7 +130,7 @@ def test_write_wav_blockwise_bytes(tmp_path, n, bits, monkeypatch):
 
 
 def test_apply_settings_takes_effect(fake_workers, make_engine):
-    """R2A-04 (engine part): the user-facing settings change the running engine; cache_dir stays."""
+    """Settings without a restart (engine part): the user-facing settings change the running engine; cache_dir stays."""
     eng = make_engine(workers=2, backend="auto", text_prep=True, max_voices=8)
     cache = eng.cache_base
     eng.apply_settings(EngineConfig(backend="numpy", workers=3, text_prep=False, max_voices=2,

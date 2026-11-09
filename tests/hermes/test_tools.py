@@ -1,4 +1,4 @@
-"""Tool handlers and jobs (INTERFACES §11; TESTPLAN K-6.6, K-6.8, K-6.9 handler part, K-6.12)."""
+"""Tool handlers and jobs (K-6.6, K-6.8, K-6.9 handler part, K-6.12)."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def broken_args(tool: str, n: int = 200) -> list:
     return [rng.choice(cases)() for _ in range(n)]
 
 
-# K-6.6: 200 broken argument sets per tool -> JSON success:false, never an exception (rot: unguarded json.loads)
+# K-6.6: 200 broken argument sets per tool -> JSON success:false, never an exception (red proof: unguarded json.loads)
 @pytest.mark.parametrize("name", ["chimera_render", "chimera_check", "chimera_speak", "chimera_job"])
 def test_tool_handlers_never_raise(registered, plugin, name):
     handler = registered.tools[name]["handler"]
@@ -120,7 +120,7 @@ def test_tool_handlers_engine_failures(registered, plugin, tool, exc):
 # ------------------------------------------------------------------------------------------------ K-6.8
 
 # K-6.8: longer than wait_s -> running + 128-bit job_id; chimera_job delivers done; a foreign conversation_id
-# gets "unknown job" (rot: 32-bit ids without owner binding)
+# gets "unknown job" (red proof: 32-bit ids without owner binding)
 def test_job_wait(registered, plugin, tool):
     plugin.engine.render_delay = 2.5
     t0 = time.monotonic()
@@ -276,7 +276,7 @@ def test_speak_tool(registered, plugin, tool):
 # ------------------------------------------------------------------------------------------------ K-6.12
 
 # K-6.12: compile error / worker crash (SIGSEGV via test hook) during warm-up -> state failed, renders with numpy,
-# the Hermes process lives (rot: exception passed through)
+# the Hermes process lives (red proof: exception passed through)
 def test_numba_failure_fallback(registered, plugin, tool):
     eng = plugin.engine
     eng.numba_installed, eng.numba_version, eng.numba_state = True, "0.68.1", "cold"

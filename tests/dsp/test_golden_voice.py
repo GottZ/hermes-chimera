@@ -1,6 +1,8 @@
-"""K-3.9 test_golden_voice_head (S3), K-3.10 test_golden_voice_full (lab; S2 with the recorded V3 tracks, S3 with
-the real control model) and K-3.10r — the red proof that T3 over whole files catches the noise-filter inheritance
-error P1-01 that a 10-ms-envelope tolerance would let through (TESTPLAN §1, REVIEW-1 P1-02)."""
+"""K-3.9 test_golden_voice_head (real control model), K-3.10 test_golden_voice_full (lab; with the recorded V3
+tracks and with the real control model) and K-3.10r — the red proof that T3 over whole files catches the
+noise-filter inheritance error (matching the final source list against the previous block, which skips the
+template's intermediate list after a contact re-application; ``recorded_control.p1_inherit``) that a
+10-ms-envelope tolerance would let through."""
 
 from __future__ import annotations
 
@@ -13,15 +15,15 @@ import recorded_control as rc
 import support
 
 GOLDEN = [s["name"] for s in support.golden("voice")]
-NEEDS_CONTROL = pytest.mark.skipif(not dsp_cases.control_available(), reason="S3: needs C2's ControlModel")
+NEEDS_CONTROL = pytest.mark.skipif(not dsp_cases.control_available(), reason="needs the control package")
 
-# K-3.10r expectations (tests/vectors/README.md "Self-check", measured on the template): emulation of P1-01 on
+# K-3.10r expectations (tests/vectors/README.md "Self-check", measured on the template): p1_inherit emulation on
 # hello-male: first bit difference 40 064, first > 1e-6 x peak at 40 066, max 1.2745e-2 x peak, envelope <= 0.0006 dB
 P1_HELLO = {"first_from": 40064, "first_to": 40200, "max_err_min": 1e-3, "env_db_max": 0.05}
 P1_SONG = {"first_from": 67000, "first_to": 68000, "max_err_min": 1e-3}
 
 
-# ------------------------------------------------------------------------------------------- K-3.9 (S3)
+# ------------------------------------------------------------------------------------------------- K-3.9
 
 @NEEDS_CONTROL
 @pytest.mark.parametrize("name", GOLDEN)
@@ -48,7 +50,7 @@ def test_golden_voice_blocks(kernel_name, name, run):
 @pytest.mark.lab
 @pytest.mark.parametrize("scenario", rc.SCENARIOS)
 def test_track_full(kernel_name, scenario, run):
-    """K-3.10 (S2): the full V3 track through HumanVoice (recorded control) = the template's audio of that track,
+    """K-3.10: the full V3 track through HumanVoice (recorded control) = the template's audio of that track,
     T3 over the whole file, length exact. sustain = r1/voice_male_110hz_aa-back_1s, hello = r1/speech_male_hello_world
     (57 845), stop = audio/stop_male_text, song-female = ref-audio twinkle (byte-identical, see the lab README)."""
     trk = rc.track(scenario, full=True)
@@ -75,7 +77,7 @@ def test_lab_track_audio_is_template_render(lab_refs):
 @NEEDS_CONTROL
 @pytest.mark.parametrize("name", GOLDEN)
 def test_golden_voice_full(kernel_name, name, run, lab_refs):
-    """K-3.10 (S3): the six golden scenarios in full length with the real control model, T3 whole file."""
+    """K-3.10: the six golden scenarios in full length with the real control model, T3 whole file."""
     ref = np.fromfile(lab_refs / "golden" / f"voice-{name}.f32", dtype="<f4")
     res = run(kernel_name, "golden", name=name)
     dsp_assert.t3(ref, res["audio"], f"golden {name} full ({kernel_name})")
@@ -85,7 +87,7 @@ def test_golden_voice_full(kernel_name, name, run, lab_refs):
 @NEEDS_CONTROL
 @pytest.mark.parametrize("scenario", ["hello-male", "stop-male"])
 def test_text_full_real_control(kernel_name, scenario, run):
-    """K-3.10 (S3): speech_male_hello_world and stop-male from their recorded inputs (set_source + the planned
+    """K-3.10: speech_male_hello_world and stop-male from their recorded inputs (set_source + the planned
     gestures, track scenario ops) with the real control model, T3 whole file."""
     trk = rc.track(scenario, full=True)
     res = run(kernel_name, "voice_ops_real", scenario=scenario)
@@ -104,7 +106,7 @@ def test_p1_red_proof_hello(kernel_name, run):
     d = support.compare_audio(trk.lab_audio(), res["audio"], 1e-6)
     print(f"K-3.10r hello-male {kernel_name}: first > 1e-6 x peak at {d.first_diverge}, max {d.max_err:.4e} x peak, "
           f"envelope {d.env_db:.5f} dB")
-    assert d.first_diverge is not None, "P1 emulation not detected by T3"
+    assert d.first_diverge is not None, "p1_inherit emulation not detected by T3"
     assert P1_HELLO["first_from"] <= d.first_diverge <= P1_HELLO["first_to"], d.first_diverge
     assert d.max_err >= P1_HELLO["max_err_min"], d.max_err
     assert d.env_db <= P1_HELLO["env_db_max"], f"envelope {d.env_db} dB: a 0.05 dB envelope check would be red too"
@@ -113,7 +115,8 @@ def test_p1_red_proof_hello(kernel_name, run):
 @pytest.mark.lab
 @pytest.mark.slow
 def test_p1_red_proof_song(kernel_name, run):
-    """K-3.10r on song-female (17 P1-critical blocks): T3 red from ≈ 67 523, max ≈ 8.4e-3 × peak."""
+    """K-3.10r on song-female (17 blocks where p1_inherit differs from the recorded inheritance): T3 red from
+    ≈ 67 523, max ≈ 8.4e-3 × peak."""
     trk = rc.track("song-female", full=True)
     res = run(kernel_name, "voice_track", scenario="song-female", n=trk.n_samples, block=128, full=True,
               inherit="p1")

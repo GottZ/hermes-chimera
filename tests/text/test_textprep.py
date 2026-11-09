@@ -16,7 +16,7 @@ cleanup. Conventions fixed here:
 - the result is "" when no letter or digit remains (the speech path raises TextError);
   prepare_text never raises for a str.
 
-Red proof (TESTPLAN): run the abbreviation step after the number step ("No. 5" then misses its digit).
+Red proof: run the abbreviation step after the number step ("No. 5" then misses its digit).
 """
 
 import functools

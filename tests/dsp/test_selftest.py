@@ -1,5 +1,5 @@
 """K-3.11 test_selftest: the self-test of both kernels passes; a falsified kernel (every radiated sample × 1.01)
-fails (INTERFACES §6.6). Without C2 the self-test's control model is the recorded /ɑ/ track of the same scenario."""
+fails. Without the control package the self-test's control model is the recorded /ɑ/ track of the same scenario."""
 
 from __future__ import annotations
 

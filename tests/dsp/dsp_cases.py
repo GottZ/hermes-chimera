@@ -1,7 +1,7 @@
-"""Render cases for C3's tests, written once and run with either kernel.
+"""Render cases for the acoustics tests, written once and run with either kernel.
 
 The numpy kernel runs them in the test process; the numba kernel runs them in a fresh interpreter
-(``dsp_numba.run_case``) because the test process never imports numba (INTERFACES §6.4a rule 5). Each case takes
+(``dsp_numba.run_case``) because the test process never imports numba. Each case takes
 kernel NAMES (str) and plain arguments and returns a dict of numpy arrays (written to an .npz by the subprocess).
 """
 
@@ -30,7 +30,7 @@ STATE_INT = ("ni", "bi", "ri", "noise_i", "glot_i", "si", "nbr_start", "nbr")
 
 
 def control_available() -> bool:
-    """C2's ControlModel present (after the S3 merge)."""
+    """The control model (``chimera_vocal.control.track.ControlModel``) is importable."""
     try:
         return importlib.util.find_spec("chimera_vocal.control.track") is not None
     except ModuleNotFoundError:
@@ -191,7 +191,7 @@ def case_output_chain(kernel_name: str, raw: list, m: int, *, output_gain: float
 
 def make_voice(kernel_name: str, control: dict, **kw):
     """HumanVoice with a test control model: {"kind": "recorded", "scenario": s, "full": bool, "inherit": str} or
-    {"kind": "steady", "scenario": s, "block": b} or {"kind": "real"} (C2, S3)."""
+    {"kind": "steady", "scenario": s, "block": b} or {"kind": "real"} (the real control model)."""
     kind = control["kind"]
     if kind == "recorded":
         fac = rc.recorded_factory(control["scenario"], full=control.get("full", False),
@@ -379,7 +379,7 @@ def case_selftest(kernel_name: str, *, falsify: float = 1.0) -> dict:
 
 
 def case_golden(kernel_name: str, name: str, *, block: int = 128, n: int | None = None) -> dict:
-    """A golden voice scenario of the template (tests/golden/voice.json) with the REAL control model (S3)."""
+    """A golden voice scenario of the template (tests/golden/voice.json) with the REAL control model."""
     s = next(x for x in support.golden("voice") if x["name"] == name)
     v = make_voice(kernel_name, {"kind": "real"}, body=BodyMix.parse(s["body"]).body(), fs_out=float(s["fsOut"]),
                    oversample=int(s["oversample"]))
@@ -388,7 +388,7 @@ def case_golden(kernel_name: str, name: str, *, block: int = 128, n: int | None 
 
 
 def case_voice_ops_real(kernel_name: str, scenario: str, *, block: int = 128) -> dict:
-    """A V3 scenario's complete input (ops incl. planned gestures) with the REAL control model (S3, K-3.10)."""
+    """A V3 scenario's complete input (ops incl. planned gestures) with the REAL control model (K-3.10)."""
     trk = rc.track(scenario, full=True)
     v = make_voice(kernel_name, {"kind": "real"}, body=body_of(trk.scenario))
     return {"audio": render_ops(v, trk.n_samples, trk.scenario["ops"], block)}

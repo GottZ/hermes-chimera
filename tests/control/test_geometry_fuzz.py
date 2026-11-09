@@ -50,7 +50,7 @@ def test_geometry_fuzz(c2):
 
 @pytest.mark.slow
 def test_geometry_fuzz_full(c2):
-    """K-2.4 (TESTPLAN size): 2 000 random postures, another seed."""
+    """K-2.4 (full size): 2 000 random postures, another seed."""
     assert _fuzz(c2, 2000, 4242) == 2036
 
 
