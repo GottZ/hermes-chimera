@@ -9,8 +9,9 @@ locally on your CPU. chimera is a Hermes plugin that
 
 The voices are not samples: a simulated vocal tract (glottis, tongue, lips, nasal tract) is driven by a phonetic
 planner, so the same engine speaks and sings at any pitch. It is a Python port of
-[chimera-vocal-synth](https://github.com/jamesondh/chimera-vocal-synth) by Jameson Hodge (MIT). No account, no API
-key, no network access.
+[chimera-vocal-synth](https://github.com/jamesondh/chimera-vocal-synth) by Jameson Hodge (MIT); where it matches the
+original sample for sample and where it deliberately differs is described under
+[Fidelity to chimera-vocal-synth](#fidelity-to-chimera-vocal-synth). No account, no API key, no network access.
 
 Requires Hermes 0.21.6 or newer on Linux, macOS or Windows. Python dependency: `numpy` (installed by Hermes).
 
@@ -101,6 +102,8 @@ two hours. Results are files under `<HERMES_HOME>/cache/audio/chimera/`; the age
 and Hermes delivers the file (a player in the desktop app, an audio file in messaging apps).
 
 Limits per score: 8 voices, 300 s of music, 1200 s summed over the voices; one tempo; one melody line per voice.
+A score can reproduce the original's `chimera render notes` output exactly; see
+[Fidelity to chimera-vocal-synth](#fidelity-to-chimera-vocal-synth) for the conditions.
 
 ## Performance
 
@@ -162,6 +165,61 @@ Environment variables `CHIMERA_BACKEND` and `CHIMERA_WORKERS` override `backend`
 - Without the accelerator long scores take minutes (see Performance).
 - An unrelated plugin, `jnorthrup/hermes-plugin-chimera`, also installs as `chimera`; Hermes can only have one of the
   two.
+
+## Fidelity to chimera-vocal-synth
+
+chimera's engine is a port of the engine of chimera-vocal-synth (commit `092b16ce12b9`), checked against the
+original's own command-line renderer (`chimera render ...`), which computes the same samples as the web app's engine
+for the same input. "Identical" below means: the same length, and no sample differs by more than 4e-8 of the peak
+(floating-point rounding, at most 1/750 of the smallest step of a 16-bit file).
+
+**Identical to the original**
+
+- The engine: sustained vowels and spoken text in the male, female and child bodies and in blends of them.
+- Scores in which every voice enters at beat 0 (no `start`, no leading rest), `lead_in` stays at its default 0.3 s,
+  `normalize` is `false` and every voice has `"seed": 0` (the first voice uses the original's seeds anyway): each
+  voice sings what `chimera render notes` sings for the same notes and lyrics, without a single differing 16-bit
+  sample (measured on single melodies and a two-voice duet).
+- Speech in a faithful mode (see Settings): the whole text in one piece, starting with the original's glide up from
+  110 Hz, as `chimera render text` does. Measured on three new sentences that text preparation leaves unchanged, in
+  the male, female and child voices: same length, largest difference 5e-9 of the peak.
+- The pronouncing dictionary (decompressed from the original's `cmudict.txt.gz`) and the phoneme tables are the
+  original's data byte for byte (sha256 in `THIRD_PARTY_NOTICES.md`).
+
+**Deliberately different**
+
+- *Spoken replies (the default).* Hermes hands over a reply sentence by sentence and does not say which sentence
+  comes first. chimera therefore
+  - starts every call at the voice's speaking pitch. The original glides into its first voiced sound from 110 Hz:
+    female and child voices begin up to 2.6 semitones flat (-215 to -260 cents) and reach their pitch within
+    45-70 ms; the male voice (112 Hz) hardly moves. Read sentence by sentence, that glide would open every sentence.
+  - renders longer text in pieces split at pauses (commas, sentence ends), so the first audio is ready early and
+    the pieces render in parallel. Each piece starts at its settled pitch and with its own random seed; with one
+    seed for all pieces, each would repeat the same pitch drift and jitter.
+
+  Length and timing stay exactly those of the original; the sound is a different random take of the same speech,
+  not the same samples. Measured on three sentences (1.5 s, 3.6 s, 11.9 s) in the male, female and child voices:
+  pitch differs by 4-14 cents (90th percentile over frames voiced in both), the long-term spectrum by 0.07-0.35 dB
+  (RMS over 21 third-octave bands, 100 Hz-10 kHz), the loudness envelope by 0.8-1.9 dB (95th percentile). The
+  original differs from itself by 8-18 cents, 0.06-0.62 dB and 0.8-2.2 dB when only its random seed changes
+  (32 seeds), so the difference is the size of picking another seed. The exception is the missing opening glide: in
+  a short one-phrase sentence it raises the pitch difference of the female and child voices to 34 cents (7-9 cents
+  without the first 0.1 s).
+- *Late entries in a score* (`start` > 0 or a leading rest) are rendered from about 0.3 s before the voice's first
+  sound instead of from the beginning of the piece, so no render time goes into the silence before the entry (and
+  the per-score voice budget counts only what is rendered). Timing and loudness match the original (entry within
+  17 samples, envelope within about 1 dB); pitch drift and vibrato phase are a different random take: 9-11 cents
+  apart without vibrato and 17-36 cents with vibrato, less than the original differs from itself between two
+  seeds with vibrato (58-62 cents).
+- *Voices after the first* get their own random seed unless they set `"seed": 0`, so voices with the same settings
+  do not drift and waver in lockstep.
+- *Additions the original does not have:* dynamics (`dyn`), spoken slots (`say`), volume, pan and stereo mixing,
+  normalisation to -1 dBFS, text preparation (numbers, abbreviations, accents), and the voices beyond male, female
+  and child.
+
+**numba and numpy** compute the same audio up to rounding: at most 5.2e-9 of the peak on the original's reference
+inputs, up to 9.9e-9 measured on other input (a voice with a derived seed); the 16-bit files they wrote were
+byte-identical in all comparisons made.
 
 ## Licence
 
