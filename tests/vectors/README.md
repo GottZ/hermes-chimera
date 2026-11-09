@@ -15,8 +15,8 @@ written by the S0 vector export: `rng.json`, `decimator.json`, `glottis.json`, `
   - `track-exporter/` builds against `crate-chimera/`, a copy of the template crate with read-only accessors
     (`src/chimera_ext/`) and a control-step recorder (three hook calls in `HumanVoice::control`). The copy renders
     all four track scenarios bit-identically to the unmodified crate (see "Self-check");
-  - `assemble.py` selects, cross-checks (public API vs. copy, 194 checks) and writes these files; `verify.py`
-    re-reads them as a consumer would.
+  - `assemble.py` selects, cross-checks (public API vs. copy, 199 checks) and writes these files (it never
+    overwrites a file the integrator trimmed, see the last section); `verify.py` re-reads them as a consumer would.
 - Build profile as the template workspace (release, opt-level 3, LTO fat, codegen-units 1), rustc 1.99.1.
 - Full-length versions live in the lab directory `CHIMERA_LAB_REFS` (`/compose/n8n/.gotmp/chimera/lab/refs`):
   `tracks/track-<scenario>.full.json`, `tracks/glottis-next.full.json`, `tracks/topology.full.json`,
@@ -127,8 +127,16 @@ rate of 96 000 Hz (`HumanVoice::new(48000, body, 2)`):
 ## `track-<scenario>.json` (V3) — control track per control step (`voice/human_voice.rs:426-509`)
 
 **Block:** block b is the b-th call of `HumanVoice::control()`. It runs before internal sample `b·128`, i.e. before
-output sample `64·b` (oversample 2, `ctrl_every` = 64·m). A row holds the values right after that call.
-`n_blocks` = ceil(n_samples·2/128).
+output sample `64·b` (oversample 2, `ctrl_every` = 64·m). **Row b = state after the complete control step b, as the
+kernel consumes it during block b** — every field, including the breath and pitch part of the step (gate, `p_lung`,
+effort, f0 glide, `human_voice.rs:477-501`); the recorder takes the row as the last statement of `control()`, and
+`render()` changes none of these values between `control()` and the block's first sample (`human_voice.rs:354-366`).
+The row `initial` stays the state after the constructor. `n_blocks` = ceil(n_samples·2/128).
+
+*Correction (S1-V3fix, requests C2-3/C3-1):* the track files of exporter commit `238dacb` took the row after the
+contact re-apply but before the breath/pitch part, so `p_lung`, `glot_par[f0]`, `glot_par[effort]`
+(and `gate`, `f0_glide` in the full tracks) carried the values of step b−1. The current files (exporter commit `9871d1a`)
+need no shift; the new row b equals the old row b+1 in those fields and the old row b in every other field (checked for every block).
 
 | key | content |
 |---|---|
@@ -140,7 +148,7 @@ output sample `64·b` (oversample 2, `ctrl_every` = 64·m). A row holds the valu
 | `list_a` | `{block: [[src, fwd, bwd], ...]}`: the intermediate list A of the first `set_noise_sources` call, for the re-apply blocks whose A differs from the final list in its (src, fwd) pairs |
 | `p1_critical_blocks`, `noise_inherit_p1_at_critical` | blocks where `noise_inherit` differs from "final list against the previous block" (REVIEW-1 P1-01), and that wrong value |
 | `float_blocks` | the blocks (ascending) whose float fields are stored; `float_selection` says why |
-| `float` | per float block: `tube_area` [n_ph + n_or] (pharynx then oral, after the slew limit), `tube_min` [n_ph + n_or] (sub-section minima), `tube_len` [ph_len, or_len] (cm), `velum_area` (velum port target, cm²; never negative here, the network stores js_max(0, ·)), `noise_par` [[gain, lowpass_hz, highpass_hz] per source], `glot_par` [17], `p_lung` (lung-pressure target of the block, dyn/cm²), `clock` (voice clock after the step, s) |
+| `float` | per float block: `tube_area` [n_ph + n_or] (pharynx then oral, after the slew limit), `tube_min` [n_ph + n_or] (sub-section minima), `tube_len` [ph_len, or_len] (cm), `velum_area` (velum port target, cm²; never negative here, the network stores js_max(0, ·)), `noise_par` [[gain, lowpass_hz, highpass_hz] per source], `glot_par` [17] (the glottis parameters the block runs with, incl. f0 and effort of this step), `p_lung` (lung-pressure target of this step, dyn/cm²; `p_lung = pressure·980.665·gate`), `clock` (voice clock after the step, s) |
 
 **`noise_inherit`** (P1-01): for source j of the block's final list, the index k in the **previous block's final
 list** whose filter state (hp, lp1, lp2) source j continues with; -1 means it starts at 0. It composes both
@@ -162,8 +170,10 @@ with fs = 96 000 (checked bitwise against the network for every block).
 
 **Truncated:** the integer fields are complete for every block of every scenario; float fields only for
 `float_blocks` (blocks 0–79 cover the 4 800-sample audio heads). Every field of every block, plus clock, gate,
-glide f0, articulator position/velocity, contact depths, `velum_target`, noise coefficients and the list A of every
-re-apply block: `tracks/track-<scenario>.full.json` in the lab (same key names under `blocks`, one entry per block).
+glide f0, `p_lung_now` (lung pressure applied before the block's first sample) and `p_lung_step` (= (p_lung −
+p_lung_now)/128, the per-sample ramp), articulator position/velocity, contact depths, `velum_target`, noise
+coefficients and the list A of every re-apply block: `tracks/track-<scenario>.full.json` in the lab (same key names
+under `blocks`, one entry per block).
 The audio the tracks belong to: `audio/track_<scenario>.f32` (raw little-endian float32, mono, 48 kHz).
 
 ## Self-check of the track export
