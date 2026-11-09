@@ -300,3 +300,25 @@ def test_numba_failure_fallback(registered, plugin, tool):
     eng.fail["selftest"] = plugin.vocal.BackendError("self-test worker crashed")
     out = slash("test")
     assert isinstance(out, str) and "crashed" in out
+
+
+# Time-limit warning: estimate >= 50 % of Hermes' tool limit -> warning in chimera_check and in the render result
+def test_deadline_warning(registered, plugin, tool):
+    eng = plugin.engine
+    r = tool(registered, "chimera_check", {"score": SCORE})
+    assert r["warnings"] == []
+    eng.estimate_s = {"numba": 2.0, "numpy": 210.0}
+    r = tool(registered, "chimera_check", {"score": SCORE})
+    assert len(r["warnings"]) == 1 and "420" in r["warnings"][0] and "chimera-numba" in r["warnings"][0]
+    done = tool(registered, "chimera_render", {"score": SCORE, "wait_s": 30})
+    assert any("time limit" in w for w in done["warnings"]), done["warnings"]
+    eng.estimate_s = {"numba": 2.0, "numpy": 209.0}
+    assert tool(registered, "chimera_check", {"score": SCORE})["warnings"] == []
+    plugin.hermes.config["timeouts"] = {"tools": {"concurrent_batch": 0}}
+    eng.estimate_s = {"numba": 2.0, "numpy": 5000.0}
+    assert tool(registered, "chimera_check", {"score": SCORE})["warnings"] == []
+    plugin.hermes.config["timeouts"] = {"tools": {"concurrent_batch": 100}}
+    eng.numba_installed, eng.numba_state = True, "ready"
+    eng.estimate_s = {"numba": 60.0, "numpy": 5000.0}
+    w = tool(registered, "chimera_check", {"score": SCORE})["warnings"]
+    assert len(w) == 1 and "numba backend" in w[0] and "chimera-numba" not in w[0]

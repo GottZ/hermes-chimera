@@ -158,6 +158,7 @@ def test_manifests():
     import tomllib
 
     proj = tomllib.loads(pyproject)
+    assert proj["project"]["name"] == "chimera"
     assert proj["project"]["dependencies"] == ["numpy>=2.3.2,<3"]
     assert "build-system" not in proj
     assert "numba" not in pyproject.split("[tool.pytest")[0]
@@ -166,6 +167,7 @@ def test_manifests():
     assert re.search(r"^name: chimera-numba$", accel, re.M)
     assert _yaml_list(accel, "requires_plugins") == ["chimera"]
     accel_proj = tomllib.loads((ROOT / "accel" / "pyproject.toml").read_text(encoding="utf-8"))
+    assert accel_proj["project"]["name"] == "chimera-numba"
     deps = accel_proj["project"]["dependencies"]
     assert len(deps) == 1 and deps[0].startswith("numba>=0.67,<1;")
     assert not re.search(r"\bnot\s*\(", deps[0]), "PEP 508 has no `not (...)`; Hermes rejects it"
@@ -180,3 +182,21 @@ def test_manifests():
     assert marker.evaluate({**env, "sys_platform": "win32", "platform_machine": "ARM64"})
     accel_init = (ROOT / "accel" / "__init__.py").read_text(encoding="utf-8")
     assert "def register(ctx)" in accel_init and "import numba" not in accel_init
+
+
+PLAN_REF = re.compile(r"INTERFACES|TESTPLAN|DESIGN|BUILD-ORDER|REVIEW-1|D§|P1-\d|\bS[0-3]\b|\bK-\d\.|§")
+HOST_PATH = re.compile(r"/compose/|/root/|/home/\w|\.gotmp|recon/|lab/s0|/Users/")
+
+
+# Release hygiene: production files carry no internal plan references and no host paths
+def test_production_files_clean():
+    files = [ROOT / "__init__.py", ROOT / "plugin.yaml", *sorted((ROOT / "chimera_hermes").glob("*.py")),
+             *sorted((ROOT / "accel").iterdir()), *sorted((ROOT / "skills").rglob("*.md"))]
+    bad = []
+    for f in files:
+        if not f.is_file() or f.suffix == ".pyc":
+            continue
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if PLAN_REF.search(line) or HOST_PATH.search(line):
+                bad.append(f"{f.relative_to(ROOT)}:{i}: {line.strip()[:120]}")
+    assert bad == [], "\n".join(bad)

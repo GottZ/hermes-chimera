@@ -118,3 +118,50 @@ def test_cli(registered, plugin, tmp_path, capsys):
     assert _cli(registered, ["selftest"]) == 0
     assert _cli(registered, ["warmup"]) == 0
     assert _cli(registered, ["check", str(tmp_path / "missing.json")]) != 0
+
+
+def _plugin_copy(tmp_path):
+    """A copy of the plugin inside a Hermes-like plugins dir: <tmp>/plugins/chimera."""
+    import shutil as sh
+
+    root = tmp_path / "plugins" / "chimera"
+    root.mkdir(parents=True)
+    for name in ("__init__.py", "plugin.yaml"):
+        sh.copy2(c5fakes.REPO_ROOT / name, root / name)
+    sh.copytree(c5fakes.REPO_ROOT / "chimera_hermes", root / "chimera_hermes",
+                ignore=sh.ignore_patterns("__pycache__"))
+    return root
+
+
+# Companion install id: Hermes' install record > the plugin's git origin > the published repository; never credentials
+def test_install_source(tmp_path, fake_hermes):
+    root = _plugin_copy(tmp_path)
+    pkg = c5fakes.load_plugin(root=root)
+    try:
+        cmd = c5fakes.submodule(pkg, "chimera_hermes.commands")
+        assert cmd.install_source() == "GottZ/hermes-chimera"
+        hint = cmd.companion_hint()
+        assert "'GottZ/hermes-chimera#accel'" in hint and "--yes-deps" in hint and "restart Hermes" in hint
+
+        git = root / ".git"
+        git.mkdir()
+        (git / "config").write_text('[core]\n\tbare = false\n[remote "upstream"]\n\turl = https://example.org/x/y\n'
+                                    '[remote "origin"]\n\turl = https://alice:ghp_SECRET123@github.com/alice/chimera-fork.git\n'
+                                    '\tfetch = +refs/heads/*:refs/remotes/origin/*\n', encoding="utf-8")
+        assert cmd.install_source() == "alice/chimera-fork"
+        assert "ghp_SECRET123" not in cmd.companion_hint()
+
+        sidecar = root.parent / ".install-metadata.json"
+        sidecar.write_text(json.dumps({"chimera": {"pinned": False, "revision": "0" * 40,
+                                                   "source": "https://bob:tok@git.example.com/bob/chimera.git?x=1#accel"},
+                                       "other": {"source": "https://github.com/x/other"}}), encoding="utf-8")
+        assert cmd.install_source() == "https://git.example.com/bob/chimera.git"
+        sidecar.write_text(json.dumps({"chimera": {"source": "file:///srv/plugins/chimera"}}), encoding="utf-8")
+        assert cmd.install_source() == "file:///srv/plugins/chimera"
+        sidecar.write_text(json.dumps({"chimera": {"source": "https://github.com/GottZ/hermes-chimera.git"}}),
+                           encoding="utf-8")
+        assert cmd.install_source() == "GottZ/hermes-chimera"
+        sidecar.write_text("{broken", encoding="utf-8")
+        assert cmd.install_source() == "alice/chimera-fork"
+    finally:
+        c5fakes.unload_plugin(pkg)

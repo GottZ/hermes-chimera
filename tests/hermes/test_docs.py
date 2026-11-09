@@ -49,8 +49,11 @@ def test_readme():
                   ["music", "sing"], ["performance", "speed"], ["settings", "configuration"],
                   ["disclosure", "what it does"], ["limit"], ["licen"]):
         assert any(any(w in h for w in words) for h in heads), f"README needs a section about {words[0]}"
-    assert "--yes-deps" in text and "hermes plugins install" in text
-    assert re.search(r"'[^'\s]+#accel'", text), "the companion id must be quoted ('owner/repo#accel', zsh)"
+    assert re.search(r"^# chimera\b", text, re.M), "README title is the plugin name"
+    assert "hermes plugins install GottZ/hermes-chimera --yes-deps" in text
+    assert "hermes plugins install 'GottZ/hermes-chimera#accel' --yes-deps" in text, \
+        "the companion id must be quoted (zsh treats # as a glob character)"
+    assert "<owner>" not in text and "<repo>" not in text
     assert not re.search(r"plugins install\s+/", text), "a local path does not install (S0-4a b2)"
     assert "hermes config set tts.provider chimera" in text
     assert "Capabilities" in text and "Text-to-Speech" in text
