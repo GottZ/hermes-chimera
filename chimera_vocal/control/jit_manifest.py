@@ -1,4 +1,4 @@
-"""JIT files of the control cluster (INTERFACES §6.4a). The worker's loader (dsp/backend.py) loads them after
+"""JIT files of the control package. The worker's loader (dsp/backend.py) loads them after
 ``core.jit.CORE_JIT_FILES`` and before the acoustics' files."""
 
 from __future__ import annotations

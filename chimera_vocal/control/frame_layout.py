@@ -1,4 +1,4 @@
-"""Layout of the geometry frame and tract constants (INTERFACES §6.3), plus readers for tests and the control model.
+"""Layout of the geometry frame and tract constants, plus readers for tests and the control model.
 
 The offsets are defined in the JIT file ``geometry_ref.py`` (a JIT file cannot import the package) and
 re-exported here. Callers outside the geometry read a frame only through the functions below, so the layout can
@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 from ..core.body import HumanBody
+from . import geometry_ref as _geo
 from .geometry_ref import (  # noqa: F401  (re-exported layout)
     F_CONTACT_BODY,
     F_CONTACT_BODY_NX,
@@ -86,8 +87,12 @@ def alloc_frame() -> np.ndarray:
 def tract_constants(body: HumanBody) -> np.ndarray:
     """float64[NTRACT]: everything HumanVocalTract::new precomputes for ``body`` (human.rs:644-679): scale, body
     numbers, area law, landmarks (PNS, condyle, polar centres) and the fixed polylines (pharyngeal wall, palate,
-    nasal cavity)."""
-    raise NotImplementedError
+    nasal cavity). The layout (T_* offsets) is private to geometry_ref; ``tract_init`` there (a @jit function
+    built on its catmull_rom) fills it, so a numba worker can build the same array."""
+    tract = np.zeros(NTRACT, dtype=np.float64)
+    _geo.tract_init(float(body.scale), float(body.pharynx), float(body.tongue_radius), float(body.lip_width),
+                    tract)
+    return tract
 
 
 def frame_scalars(frame: np.ndarray) -> dict[str, float]:

@@ -1,4 +1,4 @@
-"""Control and geometry: articulators, gesture score, vocal-tract geometry, control track (C2, INTERFACES §6.3).
+"""Control and geometry: articulators, gesture score, vocal-tract geometry, control track.
 
 The seam types are re-exported lazily (PEP 562), so ``import chimera_vocal.control`` stays cheap and loading a
 JIT file of this package by path never pulls in the rest:

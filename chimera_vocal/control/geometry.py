@@ -1,8 +1,9 @@
-"""The geometry seam between control and acoustics (INTERFACES §6.3): ``GeometryImpl`` and its CPython-side
+"""The geometry seam between control and acoustics: ``GeometryImpl`` and its CPython-side
 instances. ``ref-numba`` exists only inside a worker process, built by ``dsp/backend.py`` from the loaded
 ``_chimera_geometry_ref`` module (entry points in ``control/jit_manifest.py``).
 
-This module is plain Python (not a JIT file); ``GeometryImpl`` is never passed into a JIT function.
+This module is plain Python (not a JIT file); ``GeometryImpl`` is never passed into a compiled function (numba
+caches argument types by module path, and the plugin is imported under a different package name per install).
 """
 
 from __future__ import annotations

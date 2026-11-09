@@ -13,7 +13,7 @@ DT = 64.0 / 48000.0
 
 # The template's articulator positions for `sustain-aa-male` (HumanVoice::new(48000, male, 2), set_articulation of
 # vowel_artic("ɑ", male), no gestures, no contacts): artic_x after control block b, keys jaw, tbX, tbY, ttX, ttY,
-# root, lipAp, larynx. Source: $CHIMERA_LAB_REFS/tracks/track-sustain-aa-male.full.json (S0-V export of template
+# root, lipAp, larynx. Source: $CHIMERA_LAB_REFS/tracks/track-sustain-aa-male.full.json (export of template
 # 092b16ce12b9, MIT, Copyright (c) 2026 Jameson Hodge).
 SUSTAIN_KEYS = ("jaw", "tbX", "tbY", "ttX", "ttY", "root", "lipAp", "larynx")
 SUSTAIN_X = {

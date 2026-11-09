@@ -57,7 +57,7 @@ def test_golden_geometry_coverage(key):
 @pytest.mark.parametrize("impl_name", ["GEOMETRY_REF_CPYTHON", "GEOMETRY_VEC"])
 def test_sort_sensitive_postures(c2, impl_name):
     """K-2.1/K-2.2 extension: the 114 golden postures never depend on the order of the fan-ray crossings (measured in
-    S1: a port without the sort matches all 114, but differs on 615 of 20 000 random postures by up to 32 cm^2).
+    with this port: one without the sort matches all 114, but differs on 615 of 20 000 random postures by up to 32 cm^2).
     Three such postures with the template's own output (tests/control/data/geometry-sort-postures.json), T2."""
     from chimera_vocal.control import geometry
 
