@@ -1,4 +1,4 @@
-"""Row and field indices of the kernel state (INTERFACES §6.2): one state, two kernels.
+"""Row and field indices of the kernel state: one state, two kernels.
 
 The constants are defined in ``kernel_numba.py`` (a JIT file may import nothing from the package, and numba reads
 module globals as compile-time constants); this module re-exports them for the builder, the numpy kernel, the

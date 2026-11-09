@@ -304,7 +304,7 @@ def case_voice_steady(kernel_name: str, *, body: str = "male", f0: float = 110.0
             "clock0": np.array(clocks0), "calls": np.array(json.dumps([[str(x) for x in c] for c in calls]))}
 
 
-def case_flush(kernel_name: str, *, flush: bool, voiced_blocks: int = 79, pause_blocks: int = 600,
+def case_flush(kernel_name: str, *, flush: bool, voiced_blocks: int = 80, pause_blocks: int = 600,
                scenario: str = "hello-male") -> dict:
     """Recorded speech onset, then a long pause (lung pressure target 0, glottis amplitude 0, tract held), with or
     without the per-block flush (K-3.8). Reports the subnormal count of the float state after every block."""

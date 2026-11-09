@@ -48,8 +48,8 @@ def test_flush_unit(kernel_name, run):
 @pytest.mark.parametrize("scenario", ["hello-male", "sustain-aa-male"])
 def test_flush_output_head(kernel_name, scenario, run):
     """The flush changes the audio of the recorded heads by ≤ 1e-12 × peak."""
-    a = run(kernel_name, "flush", flush=True, voiced_blocks=79, pause_blocks=0, scenario=scenario)
-    b = run(kernel_name, "flush", flush=False, voiced_blocks=79, pause_blocks=0, scenario=scenario)
+    a = run(kernel_name, "flush", flush=True, voiced_blocks=80, pause_blocks=0, scenario=scenario)
+    b = run(kernel_name, "flush", flush=False, voiced_blocks=80, pause_blocks=0, scenario=scenario)
     d = support.compare_audio(b["audio"], a["audio"], 1e-12)
     assert d.first_diverge is None, f"flush changed the output from sample {d.first_diverge} ({d.max_err:.2e} of peak)"
 
@@ -58,7 +58,7 @@ def test_flush_output_head(kernel_name, scenario, run):
 def test_flush_after_pause(kernel_name, run):
     """Speech onset, then 3.2 s of pause: with the flush no subnormal is left in the state at any block end;
     without it subnormals appear (the precondition that makes this test meaningful); audio within 1e-12 × peak."""
-    kw = dict(voiced_blocks=79, pause_blocks=2400, scenario="hello-male")
+    kw = dict(voiced_blocks=80, pause_blocks=2400, scenario="hello-male")
     a = run(kernel_name, "flush", flush=True, **kw)
     b = run(kernel_name, "flush", flush=False, **kw)
     assert int(b["subnormals"].max()) > 0, "no subnormals without the flush: lengthen the pause"

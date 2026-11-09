@@ -1,4 +1,4 @@
-"""JIT files of the acoustics (INTERFACES §6.4a). No numba import here."""
+"""JIT files of the acoustics, loaded by the worker under fixed module names. No numba import here."""
 
 from __future__ import annotations
 

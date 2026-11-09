@@ -139,46 +139,6 @@ class Track:
         for j, t in enumerate(ini["noise_par"]):
             self.initial.noise_par[0, j] = t
         self.p1 = p1_inherit(self.noise_idx, self.noise_n, self.initial.noise_idx[0], int(self.initial.noise_n[0]))
-        self._kernel_rows()
-
-    def _kernel_rows(self) -> None:
-        """Rows as the kernel consumes them. The S0 recorder snapshots a control step BEFORE its breath and pitch
-        update (crate-chimera human_voice.rs:470-478: hook before begin_block; gate, p_lung, effort and the f0 glide
-        follow at :479-501), so a recorded row b carries p_lung, glot f0 and glot effort of step b-1. The kernel
-        needs the values after step b = the recorded values of row b+1 (exact; executed: bit-identical heads).
-        The last block of a full track has no row b+1: its values are extrapolated from the last three rows
-        (constant-goal exponential approach in gate and log f0) — see reports/S1-C3.md, request C3-1."""
-        nb = self.n_blocks
-        self.k_p_lung = np.full(nb, np.nan)
-        self.k_glot = self.glot_par.copy()
-        self.k_ok = np.zeros(nb, dtype=bool)
-        self.k_extrapolated = np.zeros(nb, dtype=bool)
-        fi, ei = gp.G_F0, gp.G_EFFORT
-        for b in range(nb - 1):
-            if self.has_float[b] and self.has_float[b + 1]:
-                self.k_p_lung[b] = self.p_lung[b + 1]
-                self.k_glot[b, fi] = self.glot_par[b + 1, fi]
-                self.k_glot[b, ei] = self.glot_par[b + 1, ei]
-                self.k_ok[b] = True
-        last = nb - 1
-        if self.full and nb >= 3:
-            blk = self.raw["blocks"]
-            g = [blk["gate"][last - 2], blk["gate"][last - 1], blk["gate"][last]]
-            f = [math.log(blk["f0_glide"][last - 2]), math.log(blk["f0_glide"][last - 1]),
-                 math.log(blk["f0_glide"][last])]
-            pressure = self.source().pressure
-
-            def nxt(v):
-                d1, d2 = v[1] - v[0], v[2] - v[1]
-                return v[2] + (d2 * (d2 / d1) if d1 != 0.0 else 0.0)
-
-            gate = nxt(g)
-            self.k_p_lung[last] = pressure * CM_H2O * gate
-            self.k_glot[last, fi] = math.exp(nxt(f))
-            self.k_glot[last, ei] = jsmath.clamp((abs(pressure * gate) - 3.0) / 10.0, 0.0, 1.0)
-            self.k_ok[last] = True
-            self.k_extrapolated[last] = True
-
     def _ints(self, b, idx, inh):
         self.noise_n[b] = len(idx)
         for j, t in enumerate(idx):
@@ -199,21 +159,21 @@ class Track:
         self.clock[b] = f["clock"]
 
     def float_head(self) -> int:
-        """Number of leading blocks with a complete kernel row (float fields of the block and of the next one)."""
+        """Number of leading blocks whose float fields are all present (row b = state after control step b)."""
         n = 0
-        while n < self.n_blocks and self.k_ok[n]:
+        while n < self.n_blocks and self.has_float[n]:
             n += 1
         return n
 
     def chunk(self, b0: int, b1: int, *, inherit: str = "track") -> TrackChunk:
         """Rows b0..b1-1 as a TrackChunk; inherit "track" = recorded noise_inherit, "p1" = REVIEW-1 emulation."""
         assert 0 <= b0 <= b1 <= self.n_blocks, (b0, b1, self.n_blocks)
-        assert self.k_ok[b0:b1].all(), f"{self.name}: kernel rows missing in blocks {b0}..{b1 - 1}"
+        assert self.has_float[b0:b1].all(), f"{self.name}: float fields missing in blocks {b0}..{b1 - 1}"
         inh = self.noise_inherit if inherit == "track" else self.p1
         sl = slice(b0, b1)
         return TrackChunk(b1 - b0, *[np.ascontiguousarray(a[sl]) for a in (
             self.tube_area, self.tube_min, self.tube_len, self.velum_area, self.noise_n, self.noise_idx,
-            self.noise_par, inh, self.k_glot, self.k_p_lung)])
+            self.noise_par, inh, self.glot_par, self.p_lung)])
 
     def posture(self, b: int) -> TrackChunk:
         """Block b's recorded tract and noise fields as a one-row chunk (glot/p_lung as recorded; SteadyControl

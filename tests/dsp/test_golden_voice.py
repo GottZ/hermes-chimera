@@ -15,7 +15,7 @@ import support
 GOLDEN = [s["name"] for s in support.golden("voice")]
 NEEDS_CONTROL = pytest.mark.skipif(not dsp_cases.control_available(), reason="S3: needs C2's ControlModel")
 
-# K-3.10r expectations [ausgeführt S0-V, tests/vectors/README.md "Self-check"]: template emulation of P1-01 on
+# K-3.10r expectations (tests/vectors/README.md "Self-check", measured on the template): emulation of P1-01 on
 # hello-male: first bit difference 40 064, first > 1e-6 x peak at 40 066, max 1.2745e-2 x peak, envelope <= 0.0006 dB
 P1_HELLO = {"first_from": 40064, "first_to": 40200, "max_err_min": 1e-3, "env_db_max": 0.05}
 P1_SONG = {"first_from": 67000, "first_to": 68000, "max_err_min": 1e-3}
@@ -50,7 +50,7 @@ def test_golden_voice_blocks(kernel_name, name, run):
 def test_track_full(kernel_name, scenario, run):
     """K-3.10 (S2): the full V3 track through HumanVoice (recorded control) = the template's audio of that track,
     T3 over the whole file, length exact. sustain = r1/voice_male_110hz_aa-back_1s, hello = r1/speech_male_hello_world
-    (57 845), stop = audio/stop_male_text, song-female = ref-audio twinkle (byte-identical, S0-V)."""
+    (57 845), stop = audio/stop_male_text, song-female = ref-audio twinkle (byte-identical, see the lab README)."""
     trk = rc.track(scenario, full=True)
     ref = trk.lab_audio()
     assert ref.shape == (trk.n_samples,)
