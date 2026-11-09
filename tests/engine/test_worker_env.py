@@ -71,3 +71,16 @@ def test_worker_threads_env(fake_workers, make_scheduler, tmp_path, monkeypatch)
     assert wait_until(probe.exists, 5) is not None
     env = json.loads(probe.read_text(encoding="utf-8"))["env"]
     assert env == {"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
+
+
+def test_worker_follows_host_bytecode_setting(fake_workers, make_scheduler, tmp_path, monkeypatch):
+    """Workers start with -I, which ignores PYTHONDONTWRITEBYTECODE: the host hands its effective setting over, so a
+    host that writes no bytecode does not get __pycache__ written into the plugin directory by its workers."""
+    monkeypatch.setattr(sys, "dont_write_bytecode", True)
+    probe = tmp_path / "probe.json"
+    sched = make_scheduler(workers=1)
+    job = fake_job(f"env|probe={probe}", 0.1)
+    sched.submit(Request("r", "speech", "numpy"), job, sink=MemorySink(job.n_out),
+                 cancel=threading.Event()).result(timeout=30)
+    info = json.loads(probe.read_text(encoding="utf-8"))
+    assert info["dont_write_bytecode"] is True

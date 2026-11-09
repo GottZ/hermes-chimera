@@ -390,8 +390,9 @@ class RenderScheduler:
             dirs.append(site.getusersitepackages())
         except AttributeError:  # pragma: no cover
             pass
+        # -I makes the worker ignore PYTHONDONTWRITEBYTECODE: hand the host's effective setting over explicitly
         return {"proto": 2, "sys_path": path, "site_dirs": [d for d in dirs if d in path], "root": self.root,
-                "cache_base": self.cache_base}
+                "cache_base": self.cache_base, "dont_write_bytecode": bool(sys.dont_write_bytecode)}
 
     def _acquire(self) -> _Worker:
         with self._lock:

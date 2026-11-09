@@ -28,6 +28,7 @@ PROTO = 2
 BOOTSTRAP = r"""
 import json, os, sys
 _hs = json.loads(sys.stdin.buffer.readline().decode("utf-8"))
+sys.dont_write_bytecode = bool(_hs.get("dont_write_bytecode", False))
 sys.path[:] = [_hs["root"]] + list(_hs["sys_path"])
 if _hs.get("site_dirs"):
     import site

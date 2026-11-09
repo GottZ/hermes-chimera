@@ -309,6 +309,7 @@ def fake_voice_factory(job: Any, kernel: Any, geometry: Any) -> FakeVoice:
                           "ignore_environment": sys.flags.ignore_environment},
                 "executable": sys.executable, "numba_loaded": "numba" in sys.modules,
                 "sitecustomize_loaded": "sitecustomize" in sys.modules,
+                "dont_write_bytecode": sys.dont_write_bytecode,
                 "env": {k: os.environ.get(k) for k in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS")},
                 "kernel": kname}
         Path(d["probe"]).write_text(json.dumps(info), encoding="utf-8")
