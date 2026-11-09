@@ -1,0 +1,36 @@
+"""K-4.10 test_voice_start_block (TESTPLAN L4, P1-06): in a canon (entries at beats 0/8/16, 84 bpm) the third voice
+renders at least 11 s less than from sample 0, and its result matches rendering it from 0 within the K-4.8b band
+(envelope p95 <= 2.5 dB, f0 p90 <= 18 ct, onset f0 p90 <= 20 ct, third-octave RMS <= 0.3 dB).
+Red proof: n_out = mix length."""
+
+from __future__ import annotations
+
+import dataclasses
+
+import pytest
+
+from support.pitch import compare_split
+
+BPM = 84
+
+
+def canon() -> dict:
+    tune = [("D4", "Row,"), ("D4", "row,"), ("D4", "row"), ("E4", "your"), ("F#4", "boat"), ("F#4", "gent-"),
+            ("E4", "ly"), ("F#4", "down"), ("G4", "the"), ("A4", "stream.")]
+    notes = [{"pitch": p, "beats": 1, "lyric": l} for p, l in tune]
+    return {"bpm": BPM, "voices": [{"body": b, "start": s, "notes": notes}
+                                   for b, s in (("female", 0), ("male", 8), ("female", 16))]}
+
+
+def test_voice_start_block(pipeline):
+    report, jobs, mixes, n_mix = pipeline.compile(canon())
+    late, vm = jobs[2], mixes[2]
+    full_n = late.n_out + 64 * late.start_block
+    assert vm.offset == 64 * late.start_block and late.settle_f0 is True
+    assert (full_n - late.n_out) / 48000 >= 11.0, "voice 3 renders at least 11 s less"
+    assert late.n_out < n_mix
+    got = pipeline.placed(pipeline.render(late), vm, n_mix)[:full_n]
+    ref = pipeline.render(dataclasses.replace(late, start_block=0, settle_f0=False, n_out=full_n))
+    t_first = report.lead_in + 16 * 60 / BPM
+    m = compare_split(ref, got, onsets_s=[t_first])
+    assert m.env_p95_db <= 2.5 and m.f0_p90_ct <= 18 and m.f0_onset_p90_ct <= 20 and m.third_rms_db <= 0.3, m
