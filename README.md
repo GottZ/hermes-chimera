@@ -66,7 +66,7 @@ body), `accent=`, `breathiness=`, `tension=`, `brightness=`, `roughness=`, `whis
 ## Faster rendering with chimera-numba
 
 chimera works out of the box with numpy. The optional companion plugin `chimera-numba` installs numba (about 210 MB
-with llvmlite), which makes rendering about 12x faster:
+with llvmlite), which makes rendering about 19x faster:
 
     hermes plugins install 'GottZ/hermes-chimera#accel' --yes-deps --enable
 
@@ -102,16 +102,17 @@ Limits per score: 8 voices, 300 s of music, 1200 s summed over the voices; one t
 
 ## Performance
 
-Real-time factor (render time ÷ audio length) for one voice on one core, measured on an x86_64 Linux machine during
-development (prototype kernels; release measurements replace these figures):
+Real-time factor (render time ÷ audio length) per voice, measured on an x86_64 Linux desktop CPU (Xeon E-2176G,
+6 cores at 3.7 GHz, Python 3.14); slower CPUs take proportionally longer:
 
-| backend | real-time factor | 30 s of speech |
-|---|---|---|
-| numba (chimera-numba) | about 0.35-0.4 | about 10-12 s |
-| numpy | about 4.5 | about 2¼ min on one core, about 45 s on four |
+| backend | real-time factor (1 voice / 4 at once) | 30 s of speech (4 workers) | 60 s score, 4 voices | first use |
+|---|---|---|---|---|
+| numba (chimera-numba) | about 0.45 / 0.55 | about 4 s | about 50 s | one-time warm-up about 20 s |
+| numpy | about 8.5 / 10 | about 1½ min | about 15 min | about 10 s for the first sentence |
 
 Rendering runs in worker processes (default `min(4, max(2, CPUs-1))`, one kept free for speech so music never delays
-spoken replies). Memory: about 30 MB per numpy worker, about 150 MB per numba worker.
+spoken replies). Memory: about 50-60 MB per numpy worker, about 160 MB per numba worker (about 325 MB while the
+warm-up compiles).
 
 ## Settings
 

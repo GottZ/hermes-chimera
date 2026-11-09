@@ -1,7 +1,7 @@
 # chimera-numba
 
 Optional accelerator for the `chimera` Hermes plugin. It registers nothing: installing it makes Hermes install
-`numba`, which chimera then uses inside its render worker processes (about 12x faster than the numpy fallback).
+`numba`, which chimera then uses inside its render worker processes (about 19x faster than the numpy fallback).
 chimera never imports numba into the Hermes process itself.
 
     hermes plugins install 'GottZ/hermes-chimera#accel' --yes-deps --enable

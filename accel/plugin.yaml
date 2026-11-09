@@ -1,7 +1,7 @@
 manifest_version: 2
 name: chimera-numba
 version: 0.1.0
-description: Optional accelerator for the chimera vocal synth (installs numba; chimera renders about 12x faster).
+description: Optional accelerator for the chimera vocal synth (installs numba; chimera renders about 19x faster).
 author: Jan-Stefan Janetzky
 license: MIT
 requires_hermes: ">=0.21.6"

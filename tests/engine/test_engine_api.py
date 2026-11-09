@@ -168,7 +168,8 @@ def test_status(fake_workers, make_engine, tmp_path):
     assert isinstance(st, BackendStatus)
     assert st.numpy_ok is True and st.numba_installed is False and st.numba_state == "absent"
     assert st.numba_version is None and st.marker is None and st.restart_needed is False
-    assert st.rtf_estimate == {"numba": 0.45, "numpy": 5.0} and st.workers == 3
+    from chimera_vocal.music.estimate import DEFAULT_RTF
+    assert st.rtf_estimate == DEFAULT_RTF and st.workers == 3
     assert st.cache_dir == str(tmp_path / "numba-cache") or (st.cache_dir or "").startswith(str(tmp_path))
 
 

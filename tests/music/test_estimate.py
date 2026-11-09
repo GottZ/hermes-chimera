@@ -32,7 +32,7 @@ def test_music_slots(workers, slots):
 
 
 def test_defaults():
-    assert DEFAULT_RTF == {"numba": 0.45, "numpy": 5.0}
+    assert DEFAULT_RTF == {"numba": 0.45, "numpy": 10.0}
     assert DEFAULT_COMPILE_S == 30.0
 
 
@@ -48,7 +48,7 @@ def test_estimate_kernels_compile_only_without_marker(state, compile_added):
 
 def test_estimate_kernels_default_rtf():
     est = estimate_kernels([10.0], workers=2, numba_state="ready")
-    assert est == pytest.approx({"numba": 10.0 * 0.45 + 0.5, "numpy": 10.0 * 5.0 + 0.5})
+    assert est == pytest.approx({k: 10.0 * DEFAULT_RTF[k] + 0.5 for k in ("numba", "numpy")})
 
 
 def canon_score() -> dict:

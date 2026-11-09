@@ -246,7 +246,7 @@ def _deadline_warning(est: dict, kernel: str) -> str | None:
         return None
     return (f"estimated render time {e:.0f} s ({kernel} backend) is at least half of Hermes' tool time limit "
             f"({d:.0f} s): expect status 'running' and wait with chimera_job"
-            + ("; installing the companion plugin chimera-numba makes rendering about 12x faster"
+            + ("; installing the companion plugin chimera-numba makes rendering about 19x faster"
                if kernel == "numpy" else ""))
 
 

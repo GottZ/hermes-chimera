@@ -116,7 +116,7 @@ def numba_missing_line() -> str:
 
 def companion_hint() -> str:
     src = install_source()
-    return (f"install the companion plugin {COMPANION} for about 12x faster rendering: "
+    return (f"install the companion plugin {COMPANION} for about 19x faster rendering: "
             f"hermes plugins install '{src}#accel' --yes-deps --enable ({DESKTOP_INSTALL}, same id), "
             "then restart Hermes")
 

@@ -266,7 +266,8 @@ class RenderScheduler:
         self._warm_started = False
         self._spawn_failed = False
         self._inproc_lock = threading.Lock()
-        self._rtf = {"numba": 0.45, "numpy": 5.0}
+        from .music.estimate import DEFAULT_RTF
+        self._rtf = dict(DEFAULT_RTF)
         self._closed = False
 
     # kernel choice --------------------------------------------------------------------------------------------

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-DEFAULT_RTF = {"numba": 0.45, "numpy": 5.0}   # per job on one core; replaced by the measured EMA
-DEFAULT_COMPILE_S = 30.0                       # warm-up worker compile (upper estimate until measured)
+DEFAULT_RTF = {"numba": 0.45, "numpy": 10.0}  # per job, measured on a 6-core x86_64 with 1-4 jobs at once; the EMA replaces it
+DEFAULT_COMPILE_S = 30.0                      # cold warm-up incl. selftest: 17.5-20 s measured, 26-29 s under load
 
 
 def estimate_seconds(job_seconds: Sequence[float], *, rtf: float, parallelism: int,
