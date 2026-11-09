@@ -423,19 +423,27 @@ class RenderScheduler:
             return "ready"
         return "warming" if self._warming else "cold"
 
-    def choose_kernel(self) -> Literal["numba", "numpy"]:
-        if self.backend == "numpy" or self._numba_failed or self._spawn_failed or not _numba_installed():
+    def choose_kernel(self, backend: Literal["auto", "numba", "numpy"] | None = None) -> Literal["numba", "numpy"]:
+        """Kernel for one request. ``backend`` is the kernel policy of whoever makes the request (None: this
+        scheduler's own setting, the one applied last). One scheduler serves every Hermes profile of a process, so a
+        request that names its policy is not steered by another profile's: ``numpy`` stays numpy; ``auto`` and
+        ``numba`` get numba once its warm-up marker is valid, and until then numpy while a warm-up runs."""
+        policy = self.backend if backend is None else backend
+        if policy == "numpy" or self._numba_failed or self._spawn_failed or not _numba_installed():
             return "numpy"
         if _marker_ok(self.cache_base):
             return "numba"
-        self.start_warmup()
+        self.start_warmup(backend=policy)
         return "numpy"
 
-    def start_warmup(self, *, retry_failed: bool = False) -> bool:
-        """Start one numba warm-up in a worker unless numba is not used here, the marker is valid or a warm-up is
-        running. ``retry_failed`` (an explicit user request) clears an earlier failure first. True if one started."""
+    def start_warmup(self, *, retry_failed: bool = False,
+                     backend: Literal["auto", "numba", "numpy"] | None = None) -> bool:
+        """Start one numba warm-up in a worker unless numba is not used here (``backend``, None: this scheduler's
+        setting), the marker is valid or a warm-up is running. ``retry_failed`` (an explicit user request) clears an
+        earlier failure first. True if one started."""
         with self._lock:
-            if self._closed or self.backend == "numpy" or self._spawn_failed or not _numba_installed():
+            policy = self.backend if backend is None else backend
+            if self._closed or policy == "numpy" or self._spawn_failed or not _numba_installed():
                 return False
             if self._warming:
                 return False

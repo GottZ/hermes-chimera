@@ -61,8 +61,8 @@ def test_one_kernel_per_request(stub_planner, fake_workers, make_engine, tmp_pat
     state = {"ready": False}
     original = sched.RenderScheduler.choose_kernel
 
-    def choose_then_marker_appears(self):
-        k = original(self)
+    def choose_then_marker_appears(self, backend=None):
+        k = original(self, backend)
         state["ready"] = True          # the warm-up finishes right after the request chose its kernel
         return k
     monkeypatch.setattr(sched, "_numba_installed", lambda: True)
