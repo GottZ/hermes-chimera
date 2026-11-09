@@ -1,4 +1,4 @@
-"""JavaScript number semantics of the template's math.rs, for plain Python callers (INTERFACES §4).
+"""JavaScript number semantics of the template's math.rs, for plain Python callers.
 
 The scalar helpers come from :mod:`nbmath` (single implementation, also compiled by numba in workers);
 this module adds the stateful Rng/Drift classes, the note/pitch conversions and IEEE-safe wrappers of
@@ -33,7 +33,7 @@ def lerp(a: float, b: float, t: float) -> float:
 
 def fmod(a: float, b: float) -> float:
     """Rust ``a % b`` on f64 (C fmod: sign of ``a``); NaN instead of ValueError. Not in nbmath because numba has
-    no ``math.fmod`` -- JIT files use ``numpy.fmod`` (same semantics, verified in S0)."""
+    no ``math.fmod`` -- JIT files use ``numpy.fmod`` (same semantics, including NaN for a zero divisor)."""
     if b == 0.0 or a != a or b != b or math.isinf(a):
         return math.nan
     if math.isinf(b):
