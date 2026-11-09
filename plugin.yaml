@@ -22,3 +22,5 @@ config_schema:
   music_format: {type: str, default: auto, choices: [auto, wav, mp3], description: "auto = mp3 when ffmpeg exists"}
   keep_days:  {type: int, default: 7, description: "Delete rendered chimera audio older than this (0 = keep)"}
   max_voices: {type: int, default: 8, description: "Largest ensemble one score may have"}
+  faithful:   {type: bool, default: false,
+               description: "Speak exactly like the original chimera web app (no number expansion, no phrase split)"}

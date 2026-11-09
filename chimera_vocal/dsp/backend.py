@@ -257,7 +257,7 @@ def warm_numba(cache_base: str) -> WarmResult:
         tmp = marker_path + f".{os.getpid()}.tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(marker, fh)
-        os.replace(tmp, marker_path)
+        replace_retrying(tmp, marker_path)
         return WarmResult(True, waited, marker if st.passed else None, time.monotonic() - t0,
                           "compiled" if st.passed else f"selftest failed: {st.detail}")
     finally:
@@ -265,6 +265,23 @@ def warm_numba(cache_base: str) -> WarmResult:
             os.remove(lock)
         except FileNotFoundError:
             pass
+
+
+REPLACE_TRIES = 20
+REPLACE_DELAY_S = 0.05
+
+
+def replace_retrying(src: str, dst: str) -> None:
+    """os.replace that rides out a reader: on Windows replacing a file another process has open (the host reads the
+    marker on every request, waiting workers poll it) fails with PermissionError until the reader closes it."""
+    for attempt in range(REPLACE_TRIES):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == REPLACE_TRIES - 1:
+                raise
+            time.sleep(REPLACE_DELAY_S * (attempt + 1))
 
 
 def marker_ok(cache_base: str) -> dict | None:

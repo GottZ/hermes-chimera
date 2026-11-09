@@ -93,6 +93,14 @@ def resolve_speed(hermes_speed: float | None, preset: Any) -> float:
     return min(1.8, max(0.5, speed * rate))
 
 
+def faithful(ctx: Any) -> bool:
+    """Plugin setting ``faithful``: speak exactly like the template web app (see Engine.speak)."""
+    v = setting(ctx, "faithful", False)
+    if isinstance(v, str):
+        return v.strip().lower() in ("true", "1", "yes", "on")
+    return v is True
+
+
 def _int(value: Any, default: int, lo: int, hi: int) -> int:
     if isinstance(value, bool):
         return default

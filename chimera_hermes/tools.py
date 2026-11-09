@@ -13,6 +13,7 @@ import dataclasses
 import json
 import logging
 import math
+import os
 from typing import Any, Callable
 
 from . import _vocal, media, paths, settings
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 _NOTE_ITEM = {"type": "object", "description": "One item: a note {pitch, beats, lyric?, dyn?}, a rest {rest} or spoken words {say, beats, rate?, hz?}",
   "properties": {
-    "pitch": {"type": "string", "description": "Note name like C4, F#3, Bb4 (C4 = middle C) or a MIDI number as text"},
+    "pitch": {"type": "string", "description": "Note name like C4, F#3, Bb4 (C4 = middle C) or a MIDI number as text like \"60\""},
     "beats": {"type": "number", "description": "Length in beats (note or spoken slot)"},
     "lyric": {"type": "string", "description": "Syllable sung on this note; 'twin-' continues the word on the next note; '-' holds the previous vowel; end with , or . to breathe"},
     "dyn": {"type": "string", "enum": ["pp", "p", "mp", "mf", "f", "ff"]},
@@ -58,28 +59,33 @@ CHIMERA_RENDER = {"name": "chimera_render",
   "parameters": {"type": "object", "properties": {
       "score": _SCORE,
       "filename": {"type": "string", "description": "Optional short file name (letters, digits, hyphens)"},
-      "wait_s": {"type": "number", "description": "Optional: max seconds to wait before returning a job id"}},
+      "wait_s": {"type": "number", "description": "Optional: max seconds to wait before returning a job id (0 = return at once)"}},
     "required": ["score"]}}
 CHIMERA_CHECK = {"name": "chimera_check",
   "description": "Validate a chimera score without rendering: errors with fixes, syllable-per-note alignment, length and estimated render time.",
   "parameters": {"type": "object", "properties": {"score": _SCORE}, "required": ["score"]}}
+MAX_TEXT_CHARS = 4000            # = Hermes' default text per TTS call; about 4 minutes of speech
 CHIMERA_SPEAK = {"name": "chimera_speak",
   "description": ("Speak English text in a specific chimera voice (male, female, child, androgynous, teen, male-deep, female-bright, "
                   "narrator, whisper, male-whisper, robot, elder, or a spec like 'female;pitch=230') and return an audio file. "
+                  f"At most {MAX_TEXT_CHARS} characters per call; split longer text. "
                   "For your normal spoken replies use text_to_speech. " + _MEDIA_RULE),
   "parameters": {"type": "object", "properties": {
       "text": {"type": "string"}, "voice": {"type": "string"}, "speed": {"type": "number", "description": "0.5-1.8"},
-      "wait_s": {"type": "number"}}, "required": ["text"]}}
+      "faithful": {"type": "boolean", "description": "true: render exactly like the original chimera web app (no number/abbreviation expansion, one piece, pitch glides in at the start)"},
+      "wait_s": {"type": "number", "description": "Optional: max seconds to wait before returning a job id (0 = return at once)"}},
+    "required": ["text"]}}
 CHIMERA_JOB = {"name": "chimera_job",
-  "description": "Wait for a chimera render that returned status 'running' and get its media line. " + _MEDIA_RULE,
-  "parameters": {"type": "object", "properties": {"job_id": {"type": "string"}, "wait_s": {"type": "number"}},
+  "description": ("Wait for a chimera render that returned status 'running' and get its media line, or stop it with "
+                  "cancel: true. " + _MEDIA_RULE),
+  "parameters": {"type": "object", "properties": {"job_id": {"type": "string"}, "wait_s": {"type": "number"},
+                                                  "cancel": {"type": "boolean", "description": "true: stop this render"}},
                  "required": ["job_id"]}}
 
 SCHEMAS: dict[str, dict] = {s["name"]: s for s in (CHIMERA_RENDER, CHIMERA_CHECK, CHIMERA_SPEAK, CHIMERA_JOB)}
 
 INSTRUCTION_DONE = "Put the media line on its own line in your reply, exactly as given, outside code blocks."
 INSTRUCTION_RUNNING = "Call chimera_job with this job_id to wait for the audio."
-MAX_TEXT_CHARS = 20000
 MAX_SCORE_JSON_CHARS = 2_000_000
 
 _numpy_cache: bool | None = None
@@ -144,9 +150,24 @@ def _opt_number(a: dict, key: str, *, lo: float = 0.0, positive: bool = False) -
     return v
 
 
-def _owner(kwargs: dict) -> str | None:
-    owner = kwargs.get("conversation_id")
-    return owner if isinstance(owner, str) and owner else None
+def _owner(kwargs: dict) -> frozenset | None:
+    """Who may wait for a job: the conversation (Hermes passes ``conversation_id`` from 0.23.x canaries on; it
+    survives context compression) and the session (``session_id``, passed by every supported Hermes). A later call
+    matches when it shares one of them."""
+    ids = frozenset(f"{key}:{v}" for key in ("conversation_id", "session_id")
+                    if isinstance(v := kwargs.get(key), str) and v)
+    return ids or None
+
+
+def _opt_bool(a: dict, key: str) -> bool | None:
+    v = a.get(key)
+    if v is None:
+        return None
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str) and v.strip().lower() in ("true", "false"):
+        return v.strip().lower() == "true"
+    raise ArgError(f"`{key}` must be true or false")
 
 
 def _ok(payload: dict) -> str:
@@ -179,13 +200,9 @@ def _guard(name: str, fn: Callable[..., str]) -> Callable[..., str]:
             return _fail(str(e))
         except Exception as e:  # noqa: BLE001 - tool handlers never raise
             logger.warning("chimera: %s failed: %s", name, e, exc_info=True)
-            try:
-                api = _vocal.api()
-                if isinstance(e, api.ScoreError):
-                    issues = _issues(getattr(e, "errors", []))
-                    return _fail(f"score has {len(issues) or 1} error(s)", issues=issues)
-            except Exception:
-                pass
+            if _vocal.is_error(e, "ScoreError"):
+                issues = _issues(getattr(e, "errors", []))
+                return _fail(f"score has {len(issues) or 1} error(s)", issues=issues)
             return _fail(f"{name} failed: {type(e).__name__}: {e}")
     handler.__name__ = name
     handler.__qualname__ = name
@@ -208,17 +225,48 @@ def _want_mp3(fmt: Any) -> tuple[bool, str | None]:
 
 
 def _finish(wav: str, seconds: float, want_mp3: bool, warnings: list[str]) -> tuple[str, str]:
+    paths.private_file(wav)
     if want_mp3:
         mp3 = wav[:-4] + ".mp3" if wav.lower().endswith(".wav") else wav + ".mp3"
         if media.to_mp3(wav, mp3, seconds=seconds):
+            paths.private_file(mp3)
             return mp3, "mp3"
         warnings.append("ffmpeg could not make an MP3; delivering WAV")
     return wav, "wav"
 
 
+def _remove_empty(path: Any) -> None:
+    """Drop the reserved (still empty) output file of a render that failed."""
+    try:
+        if os.path.getsize(path) == 0:
+            os.remove(path)
+    except OSError:
+        pass
+
+
 def _keep_days() -> float:
     v = settings.setting(_vocal.ctx(), "keep_days", 7)
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else 7.0
+
+
+def _cleanup(eng: Any) -> None:
+    """Housekeeping before a render. The numba cache folder the engine uses is always kept (numba does not touch it
+    on a cache hit, so its age says nothing); without that folder's name the numba cache is left alone."""
+    keep = None
+    try:
+        d = eng.numba_cache_dir()
+        if d:
+            keep = {os.path.basename(os.path.normpath(d))}
+    except Exception:  # noqa: BLE001 - an engine without the method (or a failure) keeps the whole cache
+        keep = None
+    paths.cleanup(_keep_days(), keep_cache=keep)
+
+
+def _tmp_dir() -> str | None:
+    try:
+        return str(paths.tmp_dir(create=True))
+    except Exception:  # noqa: BLE001 - the engine then uses the output folder
+        return None
 
 
 def _respond(job_id: str, owner: str | None, wait_s: float | None) -> str:
@@ -288,9 +336,14 @@ def _render(a: dict, **kwargs: Any) -> str:
     time_warning = _deadline_warning(dict(report.estimate_s or {}), kernel)
 
     def job(progress, cancel) -> dict:
-        paths.cleanup(_keep_days())
+        _cleanup(eng)
         out_dir, stem = paths.new_output_stem(raw_name, "score")
-        res = eng.render_score(score, str(out_dir), stem, want_mp3=False, progress=progress, cancel=cancel)
+        try:
+            res = eng.render_score(score, str(out_dir), stem, want_mp3=False, progress=progress, cancel=cancel,
+                                   tmp_dir=_tmp_dir())
+        except BaseException:
+            _remove_empty(out_dir / f"{stem}.wav")
+            raise
         warnings = [w for w in [fmt_warning, time_warning, *list(res.warnings or [])] if w]
         file, fmt = _finish(res.path_wav, res.seconds, want_mp3, warnings)
         return {"success": True, "status": "done", "media": media.media_line(file), "file": file,
@@ -325,10 +378,14 @@ def _speak(a: dict, **kwargs: Any) -> str:
     if not isinstance(text, str) or not text.strip():
         raise ArgError("`text` must be non-empty English text")
     if len(text) > MAX_TEXT_CHARS:
-        raise ArgError(f"`text` is longer than {MAX_TEXT_CHARS} characters; split it")
+        raise ArgError(f"`text` has {len(text)} characters; chimera_speak takes at most {MAX_TEXT_CHARS} (about four "
+                       "minutes of speech) per call - split the text and call chimera_speak once per part")
     voice = _opt_str(a, "voice")
     speed = _opt_number(a, "speed", positive=True)
     wait_s = _opt_number(a, "wait_s")
+    faithful = _opt_bool(a, "faithful")
+    if faithful is None:
+        faithful = settings.faithful(_vocal.ctx())
     presets = _vocal.api().presets
     if voice is not None and voice.strip():
         preset = presets.parse_voice_spec(voice.strip())
@@ -344,22 +401,25 @@ def _speak(a: dict, **kwargs: Any) -> str:
     eta = _speak_eta(eng, text)
 
     def job(progress, cancel) -> dict:
-        api = _vocal.api()
-        paths.cleanup(_keep_days())
-        try:
-            audio, kernel = eng.speak(text, preset, speed=spd, cancel=cancel)
-        except api.TextError as e:
-            raise RuntimeError(str(e) or "chimera reads English text; nothing speakable was left after cleanup") from e
+        _cleanup(eng)
         out_dir, stem = paths.new_output_stem(text[:60], "speech")
         wav = str(out_dir / f"{stem}.wav")
-        audio.to_wav(wav, bits=16)
-        seconds = float(audio.duration_s())
+        try:
+            res = eng.speak_to_wav(text, wav, preset, speed=spd, faithful=faithful, tmp_dir=_tmp_dir(),
+                                   cancel=cancel)
+        except Exception as e:
+            _remove_empty(wav)
+            if _vocal.is_error(e, "TextError"):
+                raise RuntimeError(str(e) or "chimera reads English text; nothing speakable was left after "
+                                   "cleanup") from e
+            raise
+        seconds = float(res.seconds)
         warnings = [w for w in [fmt_warning] if w]
         file, fmt = _finish(wav, seconds, want_mp3, warnings)
         return {"success": True, "status": "done", "media": media.media_line(file), "file": file, "wav": wav,
-                "format": fmt, "seconds": round(seconds, 3), "sample_rate": audio.sample_rate, "channels": 1,
-                "voices": 1, "voice": getattr(preset, "id", str(preset)), "backend": kernel, "warnings": warnings,
-                "instruction": INSTRUCTION_DONE}
+                "format": fmt, "seconds": round(seconds, 3), "sample_rate": res.sample_rate, "channels": 1,
+                "voices": 1, "voice": getattr(preset, "id", str(preset)), "backend": res.kernel,
+                "faithful": bool(faithful), "warnings": warnings, "instruction": INSTRUCTION_DONE}
 
     st = _vocal.jobs().start("speak", _owner(kwargs), job, eta_s=eta)
     return _respond(st.id, _owner(kwargs), wait_s)
@@ -370,7 +430,11 @@ def _job(a: dict, **kwargs: Any) -> str:
     if not isinstance(job_id, str) or not job_id.strip():
         raise ArgError("`job_id` must be the job id string a chimera tool returned")
     wait_s = _opt_number(a, "wait_s")
+    cancel = _opt_bool(a, "cancel")
     try:
+        if cancel:
+            _vocal.jobs().cancel(job_id.strip(), _owner(kwargs))
+            return _respond(job_id.strip(), _owner(kwargs), 10.0 if wait_s is None else wait_s)
         return _respond(job_id.strip(), _owner(kwargs), wait_s)
     except KeyError:
         return _fail(f"unknown job {job_id!r}: jobs live in this Hermes process for 2 hours and belong to the "

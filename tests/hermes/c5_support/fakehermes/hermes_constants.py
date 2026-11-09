@@ -1,14 +1,28 @@
-"""Fake ``hermes_constants`` (hermes_constants.py:194, 498-510): HERMES_HOME from the module attribute HOME."""
+"""Fake ``hermes_constants`` (hermes_constants.py:18-49, 194, 498-510): HERMES_HOME from a context-local override,
+else the module attribute HOME."""
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from pathlib import Path
 
 HOME: Path = Path("/nonexistent-hermes-home")
+_UNSET = object()
+_HERMES_HOME_OVERRIDE: ContextVar = ContextVar("_HERMES_HOME_OVERRIDE", default=_UNSET)   # hermes_constants.py:18
+
+
+def set_hermes_home_override(path):
+    """Context-local HERMES_HOME (hermes_constants.py:32-44): how one process serves several profiles."""
+    return _HERMES_HOME_OVERRIDE.set(str(path) if path else _UNSET)
+
+
+def reset_hermes_home_override(token) -> None:
+    _HERMES_HOME_OVERRIDE.reset(token)
 
 
 def get_hermes_home() -> Path:
-    return Path(HOME)
+    override = _HERMES_HOME_OVERRIDE.get()
+    return Path(override) if override is not _UNSET else Path(HOME)
 
 
 def _legacy_path_has_content(p: Path) -> bool:

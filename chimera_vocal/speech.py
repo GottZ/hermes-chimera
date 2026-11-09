@@ -9,7 +9,10 @@ template shows against itself with another random phase (envelope, f0, voicing, 
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Any, Sequence
+import os
+import tempfile
+import threading
+from typing import TYPE_CHECKING, Any, Iterator, Sequence
 
 from .core.jsmath import js_round
 from .core.types import PhraseInput, PlanOptions, Seeds
@@ -94,3 +97,82 @@ def assemble(pieces: "Sequence[np.ndarray]", jobs: "Sequence[RenderJob]", n_tota
         if k:
             out[o:o + k] = out[o:o + k] + np.asarray(piece[:k], dtype=np.float32)
     return out
+
+
+class WindowStore:
+    """Rendered speech windows in ONE temporary float32 file (window k in its own region), so the host keeps O(block)
+    memory however long the text is, and only one file descriptor is open however many windows there are.
+
+    ``sink(k)`` is the PcmSink for window k (thread-safe: windows render in parallel); ``chunks(a, b)`` yields the
+    overlap-added output samples a…b in blocks, with exactly the float32 arithmetic of ``assemble``."""
+
+    def __init__(self, jobs: "Sequence[RenderJob]", n_total: int, tmp_dir: str, *, block: int = 1 << 16) -> None:
+        self.jobs = list(jobs)
+        self.n_total = int(n_total)
+        self.block = int(block)
+        self.base: list[int] = []
+        pos = 0
+        for j in self.jobs:
+            self.base.append(pos)
+            pos += int(j.n_out)
+        fd, self.path = tempfile.mkstemp(prefix=".chimera-tmp-", suffix=".f32", dir=tmp_dir)
+        self._f = os.fdopen(fd, "w+b")
+        self._f.truncate(4 * pos)
+        self._lock = threading.Lock()
+
+    def sink(self, k: int) -> "_WindowSink":
+        return _WindowSink(self, k)
+
+    def _write(self, k: int, offset: int, pcm: "np.ndarray") -> None:
+        import numpy as np
+        data = np.ascontiguousarray(pcm, dtype="<f4").tobytes()
+        with self._lock:
+            self._f.seek(4 * (self.base[k] + int(offset)))
+            self._f.write(data)
+
+    def _read(self, k: int, offset: int, n: int) -> "np.ndarray":
+        import numpy as np
+        with self._lock:
+            self._f.seek(4 * (self.base[k] + int(offset)))
+            return np.fromfile(self._f, dtype="<f4", count=int(n))
+
+    def chunks(self, a: int = 0, b: int | None = None) -> "Iterator[np.ndarray]":
+        """float32 output samples [a, b) in blocks: per sample, the windows covering it are added to 0 in job order
+        (= ``assemble``)."""
+        import numpy as np
+        b = self.n_total if b is None else min(int(b), self.n_total)
+        spans = []
+        for k, j in enumerate(self.jobs):
+            o = 64 * j.start_block
+            spans.append((k, o, o + max(0, min(int(j.n_out), self.n_total - o))))
+        for lo in range(int(a), b, self.block):
+            hi = min(b, lo + self.block)
+            acc = np.zeros(hi - lo, np.float32)
+            for k, o, e in spans:
+                s0, s1 = max(lo, o), min(hi, e)
+                if s1 > s0:
+                    acc[s0 - lo:s1 - lo] = acc[s0 - lo:s1 - lo] + self._read(k, s0 - o, s1 - s0)
+            yield acc
+
+    def close(self) -> None:
+        try:
+            self._f.close()
+        finally:
+            try:
+                os.remove(self.path)
+            except OSError:
+                pass
+
+
+class _WindowSink:
+    def __init__(self, store: WindowStore, k: int) -> None:
+        self._store = store
+        self._k = k
+        self.written = 0
+
+    def write(self, offset: int, pcm: "np.ndarray") -> None:
+        self._store._write(self._k, offset, pcm)
+        self.written += len(pcm)
+
+    def close(self) -> None:
+        pass

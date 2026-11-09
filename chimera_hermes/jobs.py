@@ -2,12 +2,14 @@
 
 Hermes gives a tool call a fixed time limit (420 s by default) that a plugin cannot extend, and drops the result of
 a call that runs over. Every render therefore runs as a job in this process: the tool waits up to a budget below the
-limit and otherwise returns ``status: running`` with a job id; ``chimera_job`` waits again. Job ids are 128-bit random
-and bound to the conversation that started them.
+limit and otherwise returns ``status: running`` with a job id; ``chimera_job`` waits again (or cancels). Job ids are
+128-bit random and bound to the conversation/session that started them. The job thread runs in a copy of the caller's
+context, so Hermes' per-profile state (the active HERMES_HOME, kept in context variables) is the caller's.
 """
 
 from __future__ import annotations
 
+import contextvars
 import dataclasses
 import math
 import secrets
@@ -20,7 +22,7 @@ from typing import Any, Callable, Literal
 @dataclass
 class JobState:
     id: str                      # "chm-" + 32 hex digits (128 bit)
-    owner: str | None            # conversation_id of the call that started it; None outside a session
+    owner: Any                   # caller ids of the call that started it (str or set of str); None outside a session
     kind: Literal["render", "speak"]
     status: Literal["queued", "running", "done", "failed", "cancelled"]
     progress: float
@@ -35,8 +37,23 @@ def new_job_id() -> str:
     return "chm-" + secrets.token_hex(16)
 
 
-def _owner(owner: Any) -> str | None:
-    return owner if isinstance(owner, str) and owner else None
+def _owner(owner: Any) -> frozenset | None:
+    """Caller identity as a set of ids: a string is one id, an iterable several; empty -> None."""
+    if isinstance(owner, str):
+        return frozenset({owner}) if owner else None
+    if owner is None:
+        return None
+    try:
+        ids = frozenset(x for x in owner if isinstance(x, str) and x)
+    except TypeError:
+        return None
+    return ids or None
+
+
+def _foreign(job_owner: Any, owner: Any) -> bool:
+    """True when both callers are known and share no id."""
+    a, b = _owner(job_owner), _owner(owner)
+    return a is not None and b is not None and not (a & b)
 
 
 class JobRegistry:
@@ -61,7 +78,9 @@ class JobRegistry:
     def start(self, kind: str, owner: str | None, fn: Callable[[Callable[[float], None], threading.Event], dict], *,
               eta_s: float) -> JobState:
         """Run ``fn(progress, cancel)`` on a daemon thread; returns a snapshot of the new job."""
-        job = JobState(id=new_job_id(), owner=_owner(owner), kind=kind, status="queued",  # type: ignore[arg-type]
+        ids = _owner(owner)
+        stored = None if ids is None else (owner if isinstance(owner, str) else ids)
+        job = JobState(id=new_job_id(), owner=stored, kind=kind, status="queued",  # type: ignore[arg-type]
                        progress=0.0, created=self._clock(), started=None, finished=None, result=None, error=None)
         cancel = threading.Event()
         with self._cond:
@@ -97,7 +116,8 @@ class JobRegistry:
                 job.finished = self._clock()
                 self._cond.notify_all()
 
-        threading.Thread(target=run, name=f"chimera-{kind}-{job.id[4:12]}", daemon=True).start()
+        caller = contextvars.copy_context()
+        threading.Thread(target=caller.run, args=(run,), name=f"chimera-{kind}-{job.id[4:12]}", daemon=True).start()
         return self.snapshot(job.id)
 
     def snapshot(self, job_id: str) -> JobState:
@@ -122,7 +142,7 @@ class JobRegistry:
         with self._cond:
             self._purge()
             job = self._jobs.get(job_id) if isinstance(job_id, str) else None
-            if job is None or (owner is not None and job.owner is not None and owner != job.owner):
+            if job is None or _foreign(job.owner, owner):
                 raise KeyError(job_id)
             while job.finished is None:
                 left = deadline - time.monotonic()
@@ -131,6 +151,17 @@ class JobRegistry:
                 self._cond.wait(left)
             return dataclasses.replace(job)
 
+    def cancel(self, job_id: str, owner: Any) -> None:
+        """Set the cancel event of one job (KeyError like ``wait`` for an unknown or foreign job); the engine drops
+        its queued work and ends its running workers."""
+        with self._cond:
+            job = self._jobs.get(job_id) if isinstance(job_id, str) else None
+            if job is None or _foreign(job.owner, owner):
+                raise KeyError(job_id)
+            ev = self._cancel.get(job_id)
+        if ev is not None:
+            ev.set()
+
     def cancel_all(self) -> None:
         with self._cond:
             for ev in self._cancel.values():
@@ -138,14 +169,16 @@ class JobRegistry:
 
 
 def wait_budget_s(requested: float | None) -> float:
-    """How long one tool call may wait for its job: unbounded limit -> min(requested or 1800, 1800) s; a limit under
-    60 s -> 0 (return the job id at once); otherwise max(1, min(requested or ∞, limit − 45, 375)) s. The 45 s keep a
-    margin for the model's own turn."""
+    """How long one tool call may wait for its job: ``requested`` 0 -> 0 (return the job id at once); unbounded
+    limit -> min(requested, 1800) s (1800 when not given); a limit under 60 s -> 0; otherwise
+    max(1, min(requested, limit − 45, 375)) s. The 45 s keep a margin for the model's own turn."""
     from .settings import tool_deadline_s
 
+    if requested is not None and requested <= 0:
+        return 0.0
     d = tool_deadline_s()
     if d is None:
-        return float(min(requested or 1800.0, 1800.0))
+        return float(min(requested if requested is not None else 1800.0, 1800.0))
     if d < 60.0:
         return 0.0
-    return float(max(1.0, min(requested or math.inf, d - 45.0, 375.0)))
+    return float(max(1.0, min(requested if requested is not None else math.inf, d - 45.0, 375.0)))

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -31,20 +32,33 @@ def _plugin_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+_SCP_LIKE = re.compile(r"^[^@/:]+:[^@/]*@([^@/:]+:.*)$")      # user:secret@host:path (scp-like)
+
+
 def _clean_source(url: str) -> str:
-    """Install source without credentials, query or fragment; ``github.com/<o>/<r>(.git)`` shortened to ``<o>/<r>``."""
+    """Install source without credentials, query or fragment - it is shown in chat and handed to the model. Any URL
+    with a host loses its user info (``ssh://git:token@…``, ``git+https://user:token@…``); an scp-like
+    ``user:secret@host:path`` loses the part before ``@``; ``github.com/<o>/<r>(.git)`` over http(s) is shortened to
+    ``<o>/<r>``."""
     url = url.strip()
-    parts = urllib.parse.urlsplit(url)
-    if parts.scheme in ("http", "https") and parts.hostname:
-        host = parts.hostname + (f":{parts.port}" if parts.port else "")
+    try:
+        parts = urllib.parse.urlsplit(url)
+        host = parts.hostname
+        port = parts.port
+    except ValueError:
+        return "(install source not shown: unparsable URL)"
+    if parts.scheme and host:
+        netloc = (f"[{host}]" if ":" in host else host) + (f":{port}" if port else "")
         path = parts.path.rstrip("/")
-        if host.lower() == "github.com":
+        if host.lower() == "github.com" and parts.scheme in ("http", "https", "git+http", "git+https"):
             short = path.strip("/")
             short = short[:-4] if short.endswith(".git") else short
             if short.count("/") == 1:
                 return short
-        return urllib.parse.urlunsplit((parts.scheme, host, path, "", ""))
-    return url.split("#", 1)[0]
+        return urllib.parse.urlunsplit((parts.scheme, netloc, path, "", ""))
+    bare = url.split("#", 1)[0].split("?", 1)[0]
+    m = _SCP_LIKE.match(bare)
+    return m.group(1) if m else bare
 
 
 def _install_record_source(root: str) -> str | None:
@@ -160,6 +174,8 @@ def status_text(ctx: Any) -> str:
             if state == "failed":
                 line += f" ({st.numba_error or 'unknown error'}) - rendering with numpy"
             elif state in ("absent", "cold"):
+                if st.numba_error:
+                    line += f" ({st.numba_error})"
                 line += " - run /chimera warmup (or `hermes chimera warmup`) to compile the kernels once"
             if st.marker:
                 line += f", warm-up marker {str(st.marker.get('content_hash', ''))[:16]}"
@@ -217,6 +233,8 @@ def _warmup(ctx: Any) -> str:
         return f"warm-up failed: {type(e).__name__}: {e} - chimera keeps rendering with numpy"
     if st.numba_state == "failed":
         return f"warm-up failed: {st.numba_error or 'unknown error'} - chimera keeps rendering with numpy"
+    if getattr(getattr(eng, "scheduler", None), "backend", None) == "numpy":
+        return "the plugin setting backend is numpy: numba is not used (set backend to auto to use it)"
     if not st.numba_installed:
         return "warm-up started (numpy backend). " + (RESTART_FOR_COMPANION if companion_on_disk() else
                                                        companion_hint())
@@ -305,11 +323,11 @@ def run_cli(args: Any) -> int:
             return 2
         eng = _vocal.engine(ctx)
         if cmd == "warmup":
-            eng.warmup()
+            eng.warmup()        # starts the warm-up at once: state "warming" until it ends ready, failed or cold
             deadline = time.monotonic() + 900.0
             while time.monotonic() < deadline:
                 st = eng.status()
-                if not st.numba_installed or st.numba_state in ("ready", "failed"):
+                if not st.numba_installed or st.numba_state != "warming":
                     break
                 time.sleep(0.5)
             print(status_text(ctx), file=out)
@@ -333,13 +351,13 @@ def run_cli(args: Any) -> int:
             if preset is None:
                 print(f"unknown voice {args.voice!r}", file=sys.stderr)
                 return 2
-            audio, kernel = eng.speak(text, preset, speed=settings.resolve_speed(None, preset))
             if args.out:
                 path = args.out
             else:
                 d, stem = paths.new_output_stem(text[:60], "speech")
                 path = str(d / f"{stem}.wav")
-            audio.to_wav(path, bits=16)
+            eng.speak_to_wav(text, path, preset, speed=settings.resolve_speed(None, preset),
+                             faithful=settings.faithful(ctx), tmp_dir=str(paths.tmp_dir(create=True)))
             print(path, file=out)
             return 0
         if cmd == "sing":
@@ -355,7 +373,7 @@ def run_cli(args: Any) -> int:
             else:
                 d, stem = paths.new_output_stem(score.get("title") if isinstance(score, dict) else None, "score")
                 out_dir = str(d)
-            res = eng.render_score(score, out_dir, stem, want_mp3=False)
+            res = eng.render_score(score, out_dir, stem, want_mp3=False, tmp_dir=str(paths.tmp_dir(create=True)))
             print(res.path_wav, file=out)
             return 0
         print(f"unknown command {cmd!r}", file=sys.stderr)
