@@ -1,0 +1,688 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 4a52dc1..fe3fe43 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,14 +1,12 @@
+ [package]
+ name = "chimera"
+-description = "CHIMERA physical-modelling voice engine: airway acoustics, anatomy, phonetics, creatures"
+-version.workspace = true
+-edition.workspace = true
+-license.workspace = true
++description = "Copy of upstream crates/chimera (092b16ce12b9, MIT, Jameson Hodge) with read-only export accessors"
++version = "0.1.0"
++edition = "2024"
++license = "MIT"
++publish = false
+ 
+ [dependencies]
+ libm = "=0.2.16"
+ serde = { version = "1", features = ["derive"] }
+ serde_json = { version = "1", features = ["float_roundtrip"] }
+-
+-[dev-dependencies]
+-flate2 = "1"
+diff --git a/src/airway/decimator.rs b/src/airway/decimator.rs
+index d4c05d4..ed84f89 100644
+--- a/src/airway/decimator.rs
++++ b/src/airway/decimator.rs
+@@ -80,3 +80,7 @@ impl Decimator {
+         true
+     }
+ }
++
++// chimera export (tools/vector_export): read-only accessors and the control-step recorder
++#[path = "../chimera_ext/decimator_ext.rs"]
++pub mod chimera_ext;
+diff --git a/src/airway/network.rs b/src/airway/network.rs
+index 455989e..949f5a8 100644
+--- a/src/airway/network.rs
++++ b/src/airway/network.rs
+@@ -1217,3 +1217,7 @@ impl AirwayNetwork {
+         self.rad_prev_total = 0.0;
+     }
+ }
++
++// chimera export (tools/vector_export): read-only accessors and the control-step recorder
++#[path = "../chimera_ext/network_ext.rs"]
++pub mod chimera_ext;
+diff --git b/src/chimera_ext/decimator_ext.rs b/src/chimera_ext/decimator_ext.rs
+new file mode 100644
+index 0000000..308216f
+--- /dev/null
++++ b/src/chimera_ext/decimator_ext.rs
+@@ -0,0 +1,12 @@
++//! chimera export: read-only accessors for `airway::decimator` (child module).
++use super::Decimator;
++
++impl Decimator {
++    pub fn chimera_coeffs(&self) -> &[f64] {
++        &self.h
++    }
++    /// (buffer length, write position, phase counter)
++    pub fn chimera_pos(&self) -> (usize, usize, usize) {
++        (self.buf.len(), self.pos, self.count)
++    }
++}
+diff --git b/src/chimera_ext/glottis_ext.rs b/src/chimera_ext/glottis_ext.rs
+new file mode 100644
+index 0000000..61022e9
+--- /dev/null
++++ b/src/chimera_ext/glottis_ext.rs
+@@ -0,0 +1,37 @@
++//! chimera export: read-only accessors for `sources::glottis` (child module).
++use super::ParametricGlottis;
++use serde_json::{Value, json};
++
++impl ParametricGlottis {
++    /// every private field of the glottis state
++    pub fn chimera_state(&self) -> Value {
++        let (dy, da, ds) = self.drift.chimera_state();
++        json!({
++            "phase": self.phase,
++            "cycle_amp": self.cycle_amp,
++            "cycle_period_scale": self.cycle_period_scale,
++            "cycle_index": self.cycle_index,
++            "chaos_x": self.chaos_x,
++            "vib_phase": self.vib_phase,
++            "rng_state": self.rng.chimera_state(),
++            "drift_y": dy,
++            "drift_a": da,
++            "drift_rng_state": ds,
++            "drift_value": self.drift_value,
++            "drift_counter": self.drift_counter,
++            "pitch_factor": self.pitch_factor,
++            "voicing": self.voicing,
++            "voicing_sm": self.voicing_sm,
++            "dp_sm": self.dp_sm,
++            "dp_coef": self.dp_coef,
++            "voice_coef": self.voice_coef,
++            "area": self.area,
++            "f0_now": self.f0_now,
++            "threshold": self.threshold,
++            "static_sm": self.static_sm,
++            "closure_sm": self.closure_sm,
++            "amp_sm": self.amp_sm,
++            "sm_coef": self.sm_coef,
++        })
++    }
++}
+diff --git b/src/chimera_ext/human_airway_ext.rs b/src/chimera_ext/human_airway_ext.rs
+new file mode 100644
+index 0000000..816eca4
+--- /dev/null
++++ b/src/chimera_ext/human_airway_ext.rs
+@@ -0,0 +1,14 @@
++//! chimera export: read-only accessors for `voice::human_airway` (child module).
++use super::HumanAirway;
++use crate::airway::network::NoiseSpec;
++
++impl HumanAirway {
++    /// the NoiseSpec list last handed to `net.set_noise_sources` (carries lowpass_hz/highpass_hz)
++    pub fn chimera_noise_specs(&self) -> &[NoiseSpec] {
++        &self.noise_list
++    }
++    /// slew-limit baseline of the current control step and its dt
++    pub fn chimera_base(&self) -> (Option<&[Vec<f64>; 4]>, f64) {
++        (self.base.as_ref(), self.base_dt)
++    }
++}
+diff --git b/src/chimera_ext/human_voice_ext.rs b/src/chimera_ext/human_voice_ext.rs
+new file mode 100644
+index 0000000..4dc135b
+--- /dev/null
++++ b/src/chimera_ext/human_voice_ext.rs
+@@ -0,0 +1,295 @@
++//! chimera export: control-step recorder for `voice::human_voice` (child module).
++//!
++//! `control()` calls four hooks (pre: before `airway.apply`, mid: after it, post: after the
++//! optional contact re-apply, end: as the last statement of `control()`). The row of a block is
++//! taken in `end`, i.e. after the complete control step (breath gate, lung pressure, effort and
++//! the f0 glide are set after the re-apply, human_voice.rs:477-501), which is the state the
++//! samples of the block run with: `render()` calls nothing else between `control()` and the
++//! block's first sample (human_voice.rs:356-366). With no recorder started the hooks return at
++//! once and change nothing. In `Mode::Record` they only read. The two self-check modes overwrite
++//! the filter states of the final noise list after the block's `set_noise_sources` calls (in
++//! `post`; nothing after it touches the noise list or its states):
++//!   - `EmulateInherit`: states := saved states of the previous block's final list at index
++//!     `noise_inherit[j]` (0 for -1) -- what a port kernel does with the recorded track;
++//!   - `P1Rebase`: the REVIEW-1 P1 emulation "final list against the previous block"
++//!     (`p1_rebase_noise_states`, only on blocks with a contact re-apply, as in the REVIEW-1 P1 probe).
++use super::HumanVoice;
++use crate::airway::network::NoiseSource;
++use crate::airway::network::chimera_ext::NoiseFull;
++use crate::sources::glottis::GlottisParams;
++use serde_json::{Value, json};
++use std::cell::RefCell;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Mode {
++    Record,
++    EmulateInherit,
++    P1Rebase,
++}
++
++#[derive(Clone, Copy, Debug, Default)]
++pub struct NoiseRow {
++    pub src: usize,
++    pub fwd: usize,
++    pub bwd: usize,
++    pub gain: f64,
++    pub lowpass_hz: f64,
++    pub highpass_hz: f64,
++    pub lp_coef: f64,
++    pub hp_coef: f64,
++}
++
++#[derive(Clone, Debug, Default)]
++pub struct Row {
++    pub ph_areas: Vec<f64>,
++    pub or_areas: Vec<f64>,
++    pub ph_min: Vec<f64>,
++    pub or_min: Vec<f64>,
++    pub ph_len: f64,
++    pub or_len: f64,
++    /// frame.velum_port of the final geometry of the step
++    pub velum: f64,
++    /// net.port_area_target[velum_port] (= js_max(0, velum))
++    pub velum_target: f64,
++    /// final noise list of the step
++    pub noise: Vec<NoiseRow>,
++    pub glot: [f64; 17],
++    pub p_lung: f64,
++    /// lung pressure applied so far (kernel state at the block start) and the per-sample ramp step
++    pub p_lung_now: f64,
++    pub p_lung_step: f64,
++    pub reapply: bool,
++    /// intermediate list A (after `apply`, before the contact re-apply); empty when no re-apply
++    pub list_a: Vec<NoiseRow>,
++    pub inherit: Vec<i64>,
++    /// "final list against the previous block": first (src,fwd) match in the previous final list
++    pub inherit_p1: Vec<i64>,
++    /// record mode: sources whose actual (hp, lp1, lp2) differ bitwise from what `inherit` predicts
++    pub inherit_check_failures: u32,
++    /// lp_coef/hp_coef differing bitwise from 1-exp(-2*PI*lowpass/fs) / exp(-2*PI*highpass/fs)
++    pub coef_check_failures: u32,
++    pub clock: f64,
++    pub gate: f64,
++    pub f0_glide: f64,
++    pub artic_x: [f64; 17],
++    pub artic_v: [f64; 17],
++    pub contact_tip: f64,
++    pub contact_body: f64,
++}
++
++pub struct Recorder {
++    pub mode: Mode,
++    pub rows: Vec<Row>,
++    /// noise bookkeeping of the running control step, completed by `chimera_hook_end`
++    pending: Option<Row>,
++}
++
++thread_local! {
++    static REC: RefCell<Option<Recorder>> = const { RefCell::new(None) };
++}
++
++pub fn start(mode: Mode) {
++    REC.with(|r| *r.borrow_mut() = Some(Recorder { mode, rows: Vec::new(), pending: None }));
++}
++
++pub fn take() -> Option<Recorder> {
++    REC.with(|r| r.borrow_mut().take())
++}
++
++fn active() -> Option<Mode> {
++    REC.with(|r| r.borrow().as_ref().map(|x| x.mode))
++}
++
++pub struct Pre {
++    full: Vec<NoiseFull>,
++    raw: Vec<NoiseSource>,
++}
++
++pub fn glottis_array(g: &GlottisParams) -> [f64; 17] {
++    [g.f0, g.amplitude, g.abduction, g.chink, g.open_quotient, g.skew, g.closure_sharpness, g.effort, g.jitter, g.shimmer, g.vibrato_depth, g.vibrato_rate, g.drift, g.fry, g.diplophonia, g.closure, g.chaos]
++}
++
++fn find(list: &[(usize, usize)], src: usize, fwd: usize) -> Option<usize> {
++    list.iter().position(|o| o.0 == src && o.1 == fwd)
++}
++
++impl HumanVoice {
++    pub(crate) fn chimera_hook_pre(&self) -> Option<Pre> {
++        active().map(|_| Pre { full: self.airway.net.chimera_noise_full(), raw: self.airway.net.noise_sources().to_vec() })
++    }
++
++    pub(crate) fn chimera_hook_mid(&self) -> Option<Vec<NoiseRow>> {
++        active().map(|_| self.chimera_noise_rows())
++    }
++
++    pub(crate) fn chimera_hook_post(&mut self, pre: Option<Pre>, mid: Option<Vec<NoiseRow>>, reapplied: bool) {
++        let Some(mode) = active() else { return };
++        let pre = pre.expect("pre snapshot");
++        let a = mid.expect("mid snapshot");
++        let b = self.chimera_noise_rows();
++        let p_pairs: Vec<(usize, usize)> = pre.full.iter().map(|s| (s.src, s.fwd)).collect();
++        let a_pairs: Vec<(usize, usize)> = a.iter().map(|s| (s.src, s.fwd)).collect();
++        let to_i = |o: Option<usize>| o.map_or(-1i64, |k| k as i64);
++        // composition of both set_noise_sources calls: B[j] <- A[find(A, B[j])] <- P[find(P, A[i])]
++        let inherit: Vec<i64> = b
++            .iter()
++            .map(|s| {
++                if reapplied {
++                    match find(&a_pairs, s.src, s.fwd) {
++                        None => -1,
++                        Some(i) => to_i(find(&p_pairs, a[i].src, a[i].fwd)),
++                    }
++                } else {
++                    to_i(find(&p_pairs, s.src, s.fwd))
++                }
++            })
++            .collect();
++        let inherit_p1: Vec<i64> = b.iter().map(|s| to_i(find(&p_pairs, s.src, s.fwd))).collect();
++        let predicted: Vec<[f64; 3]> = inherit
++            .iter()
++            .map(|&k| if k >= 0 { let p = &pre.full[k as usize]; [p.hp, p.lp1, p.lp2] } else { [0.0; 3] })
++            .collect();
++        let mut failures = 0u32;
++        match mode {
++            Mode::Record => {
++                let now = self.airway.net.chimera_noise_full();
++                for (s, p) in now.iter().zip(&predicted) {
++                    if s.hp.to_bits() != p[0].to_bits() || s.lp1.to_bits() != p[1].to_bits() || s.lp2.to_bits() != p[2].to_bits() {
++                        failures += 1;
++                    }
++                }
++            }
++            Mode::EmulateInherit => self.airway.net.chimera_set_noise_states(&predicted),
++            Mode::P1Rebase => {
++                if reapplied {
++                    self.airway.net.p1_rebase_noise_states(&pre.raw);
++                }
++            }
++        }
++        let row = Row { reapply: reapplied, list_a: if reapplied { a } else { Vec::new() }, inherit, inherit_p1, inherit_check_failures: failures, ..Row::default() };
++        REC.with(|r| {
++            let mut r = r.borrow_mut();
++            let r = r.as_mut().unwrap();
++            assert!(r.pending.is_none(), "control step without end hook");
++            r.pending = Some(row);
++        });
++    }
++
++    /// Last statement of `control()`: the row of this block = state after the complete step.
++    pub(crate) fn chimera_hook_end(&self) {
++        if active().is_none() {
++            return;
++        }
++        let p = REC.with(|r| r.borrow_mut().as_mut().unwrap().pending.take()).expect("end hook without post hook");
++        let mut row = self.chimera_snapshot();
++        row.reapply = p.reapply;
++        row.list_a = p.list_a;
++        row.inherit = p.inherit;
++        row.inherit_p1 = p.inherit_p1;
++        row.inherit_check_failures = p.inherit_check_failures;
++        REC.with(|r| r.borrow_mut().as_mut().unwrap().rows.push(row));
++    }
++
++    fn chimera_noise_rows(&self) -> Vec<NoiseRow> {
++        let full = self.airway.net.chimera_noise_full();
++        let specs = self.airway.chimera_noise_specs();
++        assert_eq!(full.len(), specs.len(), "noise list and spec list differ in length");
++        full.iter()
++            .zip(specs)
++            .map(|(s, p)| {
++                assert!(s.src == p.src && s.fwd == p.fwd && s.bwd == p.bwd);
++                NoiseRow { src: s.src, fwd: s.fwd, bwd: s.bwd, gain: s.gain, lowpass_hz: p.lowpass_hz, highpass_hz: p.highpass_hz, lp_coef: s.lp_coef, hp_coef: s.hp_coef }
++            })
++            .collect()
++    }
++
++    /// The control outputs as they stand now (after the constructor, or after a control step).
++    pub fn chimera_snapshot(&self) -> Row {
++        use crate::math::{PI, exp};
++        let aw = &self.airway;
++        let noise = self.chimera_noise_rows();
++        let fs = aw.net.fs;
++        let coef_fail = noise
++            .iter()
++            .filter(|s| s.lp_coef.to_bits() != (1.0 - exp((-2.0 * PI * s.lowpass_hz) / fs)).to_bits() || s.hp_coef.to_bits() != exp((-2.0 * PI * s.highpass_hz) / fs).to_bits())
++            .count() as u32;
++        Row {
++            ph_areas: aw.ph_areas.clone(),
++            or_areas: aw.or_areas.clone(),
++            ph_min: aw.ph_min.clone(),
++            or_min: aw.or_min.clone(),
++            ph_len: aw.ph_len,
++            or_len: aw.or_len,
++            velum: aw.frame.as_ref().map_or(f64::NAN, |f| f.velum_port),
++            velum_target: aw.net.chimera_port_area_target(aw.velum_port),
++            noise,
++            glot: glottis_array(&self.glottis.params),
++            p_lung: self.p_lung,
++            p_lung_now: self.p_lung_now,
++            p_lung_step: self.p_lung_step,
++            reapply: false,
++            list_a: Vec::new(),
++            inherit: Vec::new(),
++            inherit_p1: Vec::new(),
++            inherit_check_failures: 0,
++            coef_check_failures: coef_fail,
++            clock: self.clock,
++            gate: self.gate,
++            f0_glide: self.f0,
++            artic_x: self.artic.x.to_array(),
++            artic_v: self.artic.v,
++            contact_tip: aw.tract.contact_tip,
++            contact_body: aw.tract.contact_body,
++        }
++    }
++
++    /// Which GlottisParams fields `apply_source()` writes: run it on a clone whose params are all a
++    /// sentinel value and report the fields that changed (G_* order).
++    pub fn chimera_apply_source_mask(&self) -> [bool; 17] {
++        let mut v = self.clone();
++        let s = -12345.678_f64;
++        v.glottis.params = GlottisParams { f0: s, amplitude: s, abduction: s, chink: s, open_quotient: s, skew: s, closure_sharpness: s, effort: s, jitter: s, shimmer: s, vibrato_depth: s, vibrato_rate: s, drift: s, fry: s, diplophonia: s, closure: s, chaos: s };
++        v.apply_source();
++        glottis_array(&v.glottis.params).map(|x| x.to_bits() != s.to_bits())
++    }
++
++    /// Private voice-level state (initial-state export).
++    pub fn chimera_private(&self) -> Value {
++        let (blen, bpos, bcount) = self.dec.chimera_pos();
++        json!({
++            "fs_out": self.fs_out,
++            "m": self.m,
++            "fs": self.fs,
++            "ctrl_every": self.ctrl_every,
++            "ctrl_counter": self.ctrl_counter,
++            "gate": self.gate,
++            "gate_target": self.gate_target,
++            "score_breath_hold": self.score_breath_hold,
++            "p_lung": self.p_lung,
++            "p_lung_now": self.p_lung_now,
++            "p_lung_step": self.p_lung_step,
++            "f0_glide": self.f0,
++            "output_gain": self.output_gain,
++            "dc_x": self.dc_x,
++            "dc_y": self.dc_y,
++            "dc_coef": self.dc_coef,
++            "clock": self.clock,
++            "base_abduction": self.base_abduction,
++            "base_closure": self.base_closure,
++            "score_f0": self.score_f0,
++            "lim_env": self.lim_env,
++            "lim_hold": self.lim_hold,
++            "lim_hold_n": self.lim_hold_n,
++            "lim_release": self.lim_release,
++            "max_penetration": self.max_penetration,
++            "decimator": { "factor": self.dec.factor, "coeffs": self.dec.chimera_coeffs(), "buf_len": blen, "pos": bpos, "count": bcount, "value": self.dec.value },
++            "glottis_params": glottis_array(&self.glottis.params),
++            "glottis_state": self.glottis.chimera_state(),
++            "artic_x": self.artic.x.to_array(),
++            "artic_v": self.artic.v,
++            "artic_target": self.artic.target.to_array(),
++            "tip_free": self.artic.tip_free,
++            "max_area_rate": self.airway.max_area_rate,
++        })
++    }
++}
+diff --git b/src/chimera_ext/math_ext.rs b/src/chimera_ext/math_ext.rs
+new file mode 100644
+index 0000000..2ceef50
+--- /dev/null
++++ b/src/chimera_ext/math_ext.rs
+@@ -0,0 +1,16 @@
++//! chimera export: read-only accessors for `math` (child module of `crate::math`).
++use super::{Drift, Rng};
++
++impl Rng {
++    /// internal mulberry32 state `s` (u32)
++    pub fn chimera_state(&self) -> u32 {
++        self.s
++    }
++}
++
++impl Drift {
++    /// (y[3], a[3], rng state)
++    pub fn chimera_state(&self) -> ([f64; 3], [f64; 3], u32) {
++        (self.y, self.a, self.rng.s)
++    }
++}
+diff --git b/src/chimera_ext/network_ext.rs b/src/chimera_ext/network_ext.rs
+new file mode 100644
+index 0000000..7d0555e
+--- /dev/null
++++ b/src/chimera_ext/network_ext.rs
+@@ -0,0 +1,157 @@
++//! chimera export: accessors for `airway::network` (child module).
++//! Everything here reads, except `chimera_set_noise_states` and `p1_rebase_noise_states`, which are
++//! called only by the self-check modes of the recorder (never in record mode).
++use super::{AirwayNetwork, Area, KIND_PORT, NoiseSource};
++use serde_json::{Value, json};
++
++/// One noise source with its private filter state: (src, fwd, bwd) and
++/// (gain, hp, lp1, lp2, lp_coef, hp_coef, level).
++#[derive(Clone, Copy, Debug)]
++pub struct NoiseFull {
++    pub src: usize,
++    pub fwd: usize,
++    pub bwd: usize,
++    pub gain: f64,
++    pub hp: f64,
++    pub lp1: f64,
++    pub lp2: f64,
++    pub lp_coef: f64,
++    pub hp_coef: f64,
++    pub level: f64,
++}
++
++impl AirwayNetwork {
++    pub fn chimera_noise_full(&self) -> Vec<NoiseFull> {
++        self.noise
++            .iter()
++            .map(|s| NoiseFull { src: s.src, fwd: s.fwd, bwd: s.bwd, gain: s.gain, hp: s.hp, lp1: s.lp1, lp2: s.lp2, lp_coef: s.lp_coef, hp_coef: s.hp_coef, level: s.level })
++            .collect()
++    }
++
++    /// Self-check only: overwrite the filter states (hp, lp1, lp2) of the current list.
++    pub fn chimera_set_noise_states(&mut self, states: &[[f64; 3]]) {
++        assert_eq!(states.len(), self.noise.len());
++        for (s, st) in self.noise.iter_mut().zip(states) {
++            s.hp = st[0];
++            s.lp1 = st[1];
++            s.lp2 = st[2];
++        }
++    }
++
++    /// Self-check only (verbatim from the REVIEW-1 P1 probe): re-derive the filter states of the
++    /// current sources from `prev` (first (src,fwd) match), i.e. as if only the final list had been
++    /// applied against the previous block's list.
++    pub fn p1_rebase_noise_states(&mut self, prev: &[NoiseSource]) {
++        for s in self.noise.iter_mut() {
++            let p = prev.iter().find(|o| o.src == s.src && o.fwd == s.fwd);
++            s.hp = p.map_or(0.0, |p| p.hp);
++            s.lp1 = p.map_or(0.0, |p| p.lp1);
++            s.lp2 = p.map_or(0.0, |p| p.lp2);
++        }
++    }
++
++    pub fn chimera_rng_state(&self) -> u32 {
++        self.rng.chimera_state()
++    }
++
++    pub fn chimera_port_area_target(&self, branch: usize) -> f64 {
++        self.port_area_target[branch]
++    }
++
++    /// Private structure and state of the network (everything `step()` reads besides the public
++    /// fields), for the topology vector.
++    pub fn chimera_topology(&self) -> Value {
++        let tube_specs: Vec<Value> = self
++            .tube_specs
++            .iter()
++            .map(|s| {
++                let area = match &s.area {
++                    Area::Uniform(a) => json!({ "uniform": a }),
++                    Area::Profile(v) => json!({ "profile": v }),
++                };
++                json!({
++                    "name": s.name,
++                    "n": s.n,
++                    "length": s.length,
++                    "area": area,
++                    "wall": s.wall.map(|w| [w.mass, w.resistance, w.stiffness]),
++                    "perimeter_factor": s.perimeter_factor,
++                    "viscous_factor": s.viscous_factor,
++                    "wall_radiation": s.wall_radiation,
++                })
++            })
++            .collect();
++        let ports: Vec<Value> = (0..self.n_branches)
++            .filter(|&j| self.b_kind[j] == KIND_PORT)
++            .map(|j| {
++                json!({
++                    "branch": j,
++                    "spec_area": self.port_specs[j].map(|s| s.area),
++                    "length": self.port_len[j],
++                    "k_entrance": self.port_kin[j],
++                    "k_exit": self.port_kex[j],
++                    "slit_width": self.port_slit[j],
++                    "half_sections": self.port_half[j],
++                    "extra_resistance": self.port_extra_r[j],
++                    "port_area": self.port_area[j],
++                    "port_area_target": self.port_area_target[j],
++                    "port_area_step": self.port_area_step[j],
++                })
++            })
++            .collect();
++        let noise: Vec<Value> = self
++            .noise
++            .iter()
++            .map(|s| json!({ "src": s.src, "fwd": s.fwd, "bwd": s.bwd, "gain": s.gain, "hp": s.hp, "lp1": s.lp1, "lp2": s.lp2, "lp_coef": s.lp_coef, "hp_coef": s.hp_coef, "level": s.level }))
++            .collect();
++        let mut m = serde_json::Map::new();
++        m.insert("finalized".to_string(), json!(self.finalized));
++        m.insert("inv_t".to_string(), json!(self.inv_t));
++        m.insert("tube_specs".to_string(), json!(tube_specs));
++        m.insert("is_junction".to_string(), json!(self.is_junction));
++        m.insert("fixed".to_string(), json!(self.fixed));
++        m.insert("has_wall".to_string(), json!(self.has_wall));
++        m.insert("wall_m".to_string(), json!(self.wall_m));
++        m.insert("wall_r".to_string(), json!(self.wall_r));
++        m.insert("wall_k".to_string(), json!(self.wall_k));
++        m.insert("wall_perim".to_string(), json!(self.wall_perim));
++        m.insert("wall_rad".to_string(), json!(self.wall_rad));
++        m.insert("node_tube".to_string(), json!(self.node_tube));
++        m.insert("visc_f".to_string(), json!(self.visc_f));
++        m.insert("rad_of".to_string(), json!(self.rad_of));
++        m.insert("nbr_start".to_string(), json!(self.nbr_start));
++        m.insert("nbr_list".to_string(), json!(self.nbr_list));
++        m.insert("b_a".to_string(), json!(self.b_a));
++        m.insert("b_b".to_string(), json!(self.b_b));
++        m.insert("b_kind".to_string(), json!(self.b_kind));
++        m.insert("ports".to_string(), json!(ports));
++        m.insert("rad_nodes".to_string(), json!(self.rad_nodes));
++        m.insert("vol_lp_coef".to_string(), json!(self.vol_lp_coef));
++        m.insert("area_target".to_string(), json!(self.area_target));
++        m.insert("amin_target".to_string(), json!(self.amin_target));
++        m.insert("dx_target".to_string(), json!(self.dx_target));
++        m.insert("area_step".to_string(), json!(self.area_step));
++        m.insert("amin_step".to_string(), json!(self.amin_step));
++        m.insert("dx_step".to_string(), json!(self.dx_step));
++        m.insert("vol".to_string(), json!(self.vol));
++        m.insert("inv_a".to_string(), json!(self.inv_a));
++        m.insert("inv_amin".to_string(), json!(self.inv_amin));
++        m.insert("inv_lsum".to_string(), json!(self.inv_lsum));
++        m.insert("half_l".to_string(), json!(self.half_l));
++        m.insert("half_r".to_string(), json!(self.half_r));
++        m.insert("sqrt_a".to_string(), json!(self.sqrt_a));
++        m.insert("spill".to_string(), json!(self.spill));
++        m.insert("vol_src1".to_string(), json!(self.vol_src1));
++        m.insert("vol_src2".to_string(), json!(self.vol_src2));
++        m.insert("wall_v".to_string(), json!(self.wall_v));
++        m.insert("mom".to_string(), json!(self.mom));
++        m.insert("l_prev".to_string(), json!(self.l_prev));
++        m.insert("rad_ul".to_string(), json!(self.rad_ul));
++        m.insert("rad_l_prev".to_string(), json!(self.rad_l_prev));
++        m.insert("rad_prev_total".to_string(), json!(self.rad_prev_total));
++        m.insert("noise".to_string(), json!(noise));
++        m.insert("rng_state".to_string(), json!(self.rng.chimera_state()));
++        m.insert("pending_fixed".to_string(), json!(self.pending_fixed));
++        Value::Object(m)
++    }
++}
+diff --git a/src/math.rs b/src/math.rs
+index c03a439..21dda6b 100644
+--- a/src/math.rs
++++ b/src/math.rs
+@@ -288,3 +288,7 @@ mod tests {
+         assert_eq!(js_round(-0.6), -1.0);
+     }
+ }
++
++// chimera export (tools/vector_export): read-only accessors and the control-step recorder
++#[path = "chimera_ext/math_ext.rs"]
++pub mod chimera_ext;
+diff --git a/src/sources/glottis.rs b/src/sources/glottis.rs
+index 83ce8e5..55484cd 100644
+--- a/src/sources/glottis.rs
++++ b/src/sources/glottis.rs
+@@ -244,3 +244,7 @@ fn shape(ph: f64, oq: f64, skew: f64, sharp: f64) -> f64 {
+     let hard = cos(0.5 * PI * u);
+     soft + (hard - soft) * sharp
+ }
++
++// chimera export (tools/vector_export): read-only accessors and the control-step recorder
++#[path = "../chimera_ext/glottis_ext.rs"]
++pub mod chimera_ext;
+diff --git a/src/voice/human_airway.rs b/src/voice/human_airway.rs
+index 0b3fbc9..361d0f3 100644
+--- a/src/voice/human_airway.rs
++++ b/src/voice/human_airway.rs
+@@ -324,3 +324,7 @@ impl HumanAirway {
+         self.noise_list = list;
+     }
+ }
++
++// chimera export (tools/vector_export): read-only accessors and the control-step recorder
++#[path = "../chimera_ext/human_airway_ext.rs"]
++pub mod chimera_ext;
+diff --git a/src/voice/human_voice.rs b/src/voice/human_voice.rs
+index 9092506..5955788 100644
+--- a/src/voice/human_voice.rs
++++ b/src/voice/human_voice.rs
+@@ -467,11 +467,15 @@ impl HumanVoice {
+         self.clock += dt;
+         // contact constraint on the frame computed anyway; re-apply only if a correction was made
+         let x = self.artic.x;
++        let chimera_pre = self.chimera_hook_pre();
+         self.airway.apply(&x, dt);
+-        if self.enforce_contacts() {
++        let chimera_mid = self.chimera_hook_mid();
++        let chimera_reapplied = self.enforce_contacts();
++        if chimera_reapplied {
+             let x = self.artic.x;
+             self.airway.reapply(&x);
+         }
++        self.chimera_hook_post(chimera_pre, chimera_mid, chimera_reapplied);
+         self.airway.net.begin_block(self.ctrl_every);
+         self.ctrl_counter = self.ctrl_every as i64;
+         // breath: fast attack, slower release; a speaking score breathes on its own
+@@ -506,6 +510,7 @@ impl HumanVoice {
+             let br = if k < n_ph { self.airway.branch_of(self.airway.pharynx, k as isize) } else { self.airway.branch_of(self.airway.oral, (k - n_ph) as isize) };
+             self.flow_sm[k] += a * (self.airway.net.u[br] - self.flow_sm[k]);
+         }
++        self.chimera_hook_end();
+     }
+ 
+     /// Contact constraint: articulators cannot travel into the palate. Beyond `max_penetration` of
+@@ -617,3 +622,7 @@ impl HumanVoice {
+         let _ = n_t;
+     }
+ }
++
++// chimera export (tools/vector_export): read-only accessors and the control-step recorder
++#[path = "../chimera_ext/human_voice_ext.rs"]
++pub mod chimera_ext;

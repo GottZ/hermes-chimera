@@ -1,0 +1,23 @@
+[package]
+name = "chimera-s0-exporter"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "S0 vector export from the unmodified upstream chimera crate (public API only)"
+
+[workspace]
+
+[dependencies]
+# `upstream` = checkout of jamesondh/chimera-vocal-synth @ 092b16ce12b9 next to this directory (see README)
+chimera = { path = "../upstream/crates/chimera" }
+flate2 = "1"
+serde = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+# same release profile as the upstream workspace (Cargo.toml:9-15)
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = false

@@ -1,0 +1,23 @@
+[package]
+name = "chimera-vectors"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Exports conformance test vectors from the upstream chimera engine for a Python port"
+
+[workspace]
+
+[dependencies]
+# `upstream` = checkout of jamesondh/chimera-vocal-synth @ 092b16ce12b9 next to this directory (see ../README.md)
+chimera = { path = "../upstream/crates/chimera" }
+flate2 = "1"
+serde = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+# same release profile as the upstream workspace (Cargo.toml:10-15), so the engine is built the same way
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = false
