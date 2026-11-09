@@ -97,6 +97,18 @@ Same melody, entries every 8 beats with `start`, spread with `pan`; the male voi
 {"name":"singer","body":"female","start":4,"notes":[{"pitch":"G4","beats":1,"lyric":"Hel-"},{"pitch":"A4","beats":1,"lyric":"lo"},{"pitch":"B4","beats":1,"lyric":"world,"},{"pitch":"C5","beats":1,"lyric":"hel-"},{"pitch":"B4","beats":1,"lyric":"lo"},{"pitch":"G4","beats":3,"lyric":"you."}]}]}
 ```
 
+## Matching the original chimera-vocal-synth
+
+Only when the user asks for the exact output of the original chimera-vocal-synth: every voice starts at beat 0
+(no `start`, no leading rest), `lead_in` stays at its default, every voice gets `"seed": 0`, the score sets
+`"normalize": false`, and only `bpm`, `body`, `vibrato`, notes and lyrics are used. Each voice then matches the
+original's `render notes` sample for sample.
+
+Otherwise leave `seed` out. Voices that enter later are rendered from shortly before their entry, and voices after
+the first get their own random seed - both on purpose: timing stays the same, the sound is a different random take
+(within the variation the original shows between its own seeds), and equal voices do not drift in lockstep. Spoken
+replies also deliberately start each sentence at the speaking pitch instead of the original's glide up from 110 Hz.
+
 ## Limits
 
 - English words only (other languages are read with English rules). One melody line per voice; one tempo per score.
