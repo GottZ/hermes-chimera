@@ -140,7 +140,8 @@ def test_ffmpeg(plugin, ffmpeg, tmp_path, monkeypatch):
     assert "-y" in cmd and "libmp3lame" in cmd
     assert kw["stdin"] is subprocess.DEVNULL
     assert kw["timeout"] == pytest.approx(60.0)
-    assert kw.get("creationflags", 0) == 0
+    # hidden window exactly on Windows: CREATE_NO_WINDOW there, no flags elsewhere
+    assert kw.get("creationflags", 0) == (0x08000000 if sys.platform == "win32" else 0)
     media.to_mp3(str(wav), str(mp3), seconds=100.0)
     assert ffmpeg.calls[-1][1]["timeout"] == pytest.approx(200.0)
     monkeypatch.setattr(sys, "platform", "win32")
@@ -160,7 +161,9 @@ def test_ffmpeg(plugin, ffmpeg, tmp_path, monkeypatch):
     never = _Run()
     monkeypatch.setattr(subprocess, "run", never)
     assert media.to_mp3(str(wav), str(mp3), seconds=3.0) is False and never.calls == []
-    assert media.media_line(Path("/x/y z.wav")) == "MEDIA:/x/y z.wav"
+    spaced = Path("/x/y z.wav")             # the native form of the path, spaces kept, nothing quoted
+    assert media.media_line(spaced) == "MEDIA:" + str(spaced)
+    assert sys.platform == "win32" or media.media_line(spaced) == "MEDIA:/x/y z.wav"
 
 
 SCORE = {"bpm": 90, "voices": [{"notes": [{"pitch": "C4", "beats": 1}]}]}
