@@ -5,7 +5,10 @@ regions, split index, outline sizes) exact. numba runs in a subprocess only -- t
 Also the JIT-file rules of geometry_ref.py and the manifest, which need no numba.
 """
 
+import ctypes
+import ctypes.util
 import json
+import math
 import subprocess
 import sys
 
@@ -17,6 +20,17 @@ from support import PACKAGE_DIR, REPO_ROOT
 
 N_RANDOM = 200
 NUMBA_TOL = 1e-13
+
+
+def _c_hypot():
+    """The C library's hypot, the one numba-compiled code calls (``"hypot"``, ``"_hypot"`` on Windows)."""
+    if sys.platform == "win32":
+        f = ctypes.CDLL("ucrtbase")._hypot
+    else:
+        f = ctypes.CDLL(ctypes.util.find_library("m") or ctypes.util.find_library("c")).hypot
+    f.restype = ctypes.c_double
+    f.argtypes = [ctypes.c_double, ctypes.c_double]
+    return lambda x, y: f(x, y)
 
 # The loader below mirrors load_numba (chimera_vocal/dsp/backend.py) for the two files involved; it is the test's
 # own copy so the control tests need no dsp code. FASTMATH is replaced by the red proof only.
@@ -94,7 +108,7 @@ def _postures(c2):
 
 
 @pytest.mark.numba
-def test_geometry_numba(c2, tmp_path):
+def test_geometry_numba(c2, tmp_path, monkeypatch):
     """K-2.3: ref-numba == ref-cpython <= 1e-13 relative on golden + random postures."""
     from chimera_vocal.control import frame_layout as fl
     from chimera_vocal.control.geometry import GEOMETRY_REF_CPYTHON
@@ -113,6 +127,11 @@ def test_geometry_numba(c2, tmp_path):
                        capture_output=True, text=True, timeout=1800, cwd=REPO_ROOT)
     assert r.returncode == 0 and r.stdout.strip().endswith("ok"), r.stderr[-4000:]
     frames, res = np.load(tmp_path / "frames.npy"), np.load(tmp_path / "res.npy")
+    # numba compiles math.hypot to a call of the C library's hypot (numba/cpython/mathimpl.py, hypot_float_impl),
+    # while CPython's math.hypot is its own algorithm; the two differ in the last bit for some inputs (how often
+    # depends on the C library), and near-parallel ray crossings amplify that to 1e-13 and beyond. The reference
+    # therefore runs on the C library's hypot too, so the comparison measures the compiled code, not two hypots.
+    monkeypatch.setattr(math, "hypot", _c_hypot())
     failures, worst = [], 0.0
     for i, (body, a) in enumerate(posts):
         want = c2.run_geometry(GEOMETRY_REF_CPYTHON, body, a)
