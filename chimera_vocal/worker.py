@@ -161,7 +161,7 @@ def _render(state: _State, out: BinaryIO, msg: dict) -> None:
         pos["sent"], pos["i"] = p, pos["i"] + 1
 
     render_job(job, kernel, geometry, out=buf, chunk=chunk, progress=progress)
-    write_frame(out, {"req": req, "done": True, "seconds": time.perf_counter() - t0})
+    write_frame(out, {"req": req, "done": True, "seconds": time.perf_counter() - t0, "pid": os.getpid()})
 
 
 def _handle(state: _State, out: BinaryIO, msg: dict) -> None:
