@@ -1,6 +1,8 @@
 """K-4.8 test_phrase_split_equivalence (TESTPLAN L4, DESIGN §3.3, E1-A): speech rendered in phrase windows (rule
 D§3.3) equals the continuous voice (a) bit-exactly before W_1 and (b) overall within the template's own spread:
-envelope p95 <= 2.5 dB, f0 p90 <= 18 ct, f0 onset p90 <= 20 ct, third-octave RMS <= 0.3 dB. FakeVoice with the E1-A
+envelope p95 <= 2.5 dB, f0 p90 <= 18 ct, f0 onset p90 <= 20 ct, third-octave RMS <= 0.3 dB, voicing disagreement
+<= 0.032 (E1-A band maximum; f0 is measured over frames voiced in both, so lost voicing shows only there - R2A-19;
+measured 0.006-0.019 on the real engine, S4-TS). FakeVoice with the E1-A
 phrase timing always; the real engine in S3 (plus child and rate 1.3, DESIGN §12). Red proof: no settle_f0 for k >= 1."""
 
 from __future__ import annotations
@@ -55,3 +57,4 @@ def test_phrase_split_equivalence(pipeline, tag, body, speed):
     assert m.f0_p90_ct <= 18.0, m
     assert m.f0_onset_p90_ct <= 20.0, m
     assert m.third_rms_db <= 0.3, m
+    assert m.voicing_disagree <= 0.032, m

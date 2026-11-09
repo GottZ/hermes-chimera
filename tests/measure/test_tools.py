@@ -10,7 +10,7 @@ import pytest
 
 from support.fakes import FakeVoice
 from support.pitch import (cents, compare_split, envelope_db, harmonic_score, hz, lpc_formants, naked_yin_f0, onsets,
-                           peak_dbfs, rms_db, sung_f0, third_octave_db, yin_track)
+                           peak_dbfs, rms_db, sung_f0, third_octave_db, vibrato_stats, yin_track)
 from chimera_vocal.core.types import Gesture
 
 FS = 48000
@@ -133,3 +133,53 @@ def test_compare_split_band_selection():
     assert compare_split(x, x, bands="active40").bands_excluded > 0
     with pytest.raises(ValueError):
         compare_split(x, x, bands="some")
+
+
+def _noise_like(x: np.ndarray, seed: int = 1) -> np.ndarray:
+    return np.random.default_rng(seed).standard_normal(x.size) * math.sqrt(float(np.mean(x * x)))
+
+
+def test_compare_split_refuses_an_empty_population():
+    """R2A-19: no frame voiced in both signals (tone vs noise) must not read 0 ct and pass - it is an error; so is an
+    onset window without common voiced frames."""
+    x = held(205.0, 2.0)
+    with pytest.raises(ValueError, match="voiced in both"):
+        compare_split(x, _noise_like(x), onsets_s=[1.05], bands="active40")
+    late = x.copy()
+    late[:48000] = _noise_like(x)[:48000]            # first half unvoiced: the onset window at 0.2 s has no common frame
+    with pytest.raises(ValueError, match="onset windows"):
+        compare_split(x, late, onsets_s=[0.2], bands="active40")
+
+
+def test_compare_split_reports_voicing_disagreement():
+    """A render that loses its voicing (second half noise) keeps f0 p90 at 0 over the frames voiced in both; the
+    voicing disagreement shows it (E1-A band 0.010/0.032, K-4.8/K-4.10 check it)."""
+    x = held(205.0, 2.0)
+    half = x.copy()
+    half[48000:] = _noise_like(x)[48000:]
+    m = compare_split(x, half, onsets_s=[0.2], bands="active40")
+    assert m.f0_p90_ct == 0 and m.voiced_both >= 40 and m.voiced_onset >= 5
+    assert m.voicing_disagree > 0.4, m
+    assert compare_split(x, x).voicing_disagree == 0
+
+
+def _vibrato_tone(depth: float, rate: float, seconds: float = 2.0, f0: float = 293.66) -> np.ndarray:
+    t = np.arange(int(seconds * FS)) / FS
+    c = depth * np.sin(2 * math.pi * rate * t + 1.0) + 8 * t          # vibrato plus a slow drift of 8 ct/s
+    ph = 2 * math.pi * np.cumsum(f0 * 2 ** (c / 1200)) / FS
+    return sum(np.sin(k * ph) / k for k in range(1, 8))
+
+
+@pytest.mark.parametrize("depth,rate", [(35.0, 6.0), (35.0, 5.2), (70.0, 6.0)])
+def test_vibrato_stats(depth, rate):
+    v = vibrato_stats(_vibrato_tone(depth, rate), [(0.3, 1.8)])
+    assert v.spans == 1
+    assert v.extent_ct == pytest.approx(depth, rel=0.05), v
+    assert v.rate_hz == pytest.approx(rate, abs=0.05), v
+    assert vibrato_stats(_vibrato_tone(0.0, rate), [(0.3, 1.8)]).extent_ct < 0.5
+
+
+def test_vibrato_stats_needs_voiced_frames():
+    x = _vibrato_tone(35.0, 6.0)
+    with pytest.raises(ValueError, match="no span"):
+        vibrato_stats(_noise_like(x), [(0.3, 1.8)])
