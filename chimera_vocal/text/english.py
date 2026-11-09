@@ -42,7 +42,7 @@ _REDUCIBLE = frozenset(("ʌ", "æ", "ɑ", "ɛ", "ɔ", "u", "ʊ"))
 _KEEP_FULL = frozenset(("you", "do", "to", "who", "not", "no"))
 
 # JavaScript's \s (and what String.prototype.trim removes)
-JS_SPACE = frozenset("\t\n\x0b\x0c\r \xa0     　﻿"
+JS_SPACE = frozenset("\x09\x0a\x0b\x0c\x0d\x20\xa0\u1680\u2028\u2029\u202f\u205f\u3000\ufeff"
                      + "".join(chr(c) for c in range(0x2000, 0x200B)))
 _JS_SPACE_RE = re.compile("[" + "".join(sorted(JS_SPACE)) + "]")
 _PHRASE_PUNCT = frozenset(".!?;:,")
