@@ -74,6 +74,7 @@ jobs:
         timeout-minutes: 5
         run: |
           "$PY" .github/ci-diag/worker_probe.py 2>&1 | tee ci-out/diag-worker-probe.txt
+          "$PY" -m pytest -q -p no:cacheprovider -rfE --timeout=200 tests/engine/test_worker_first_import.py 2>&1 | tee -a ci-out/diag-worker-probe.txt
 
       - name: Platform smoke (worker processes, both kernels, cancel, killed host)
         if: ${{ !cancelled() }}

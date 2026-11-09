@@ -55,6 +55,7 @@ def ulps(a, b):
 
 
 def report(name, pairs):
+    """Mismatches of the first against the second value (np.hypot is compared with numba's, i.e. C, hypot)."""
     bad = [(u, x) for u, x in ((ulps(p, q), x) for p, q, x in pairs) if u]
     worst = max(bad) if bad else (0, None)
     print(f"{name:10s} {len(bad):6d} of {len(pairs)} differ, worst {worst[0]} ulp at {worst[1]!r}")
@@ -73,6 +74,8 @@ report("cos", [(cos_only(a), math.cos(a), a) for a in ang])
 report("sin", [(sin_only(a), math.sin(a), a) for a in ang])
 xy = rng.uniform(-20.0, 20.0, (n, 2))
 report("hypot", [(hypot(x, y), math.hypot(x, y), (x, y)) for x, y in xy])
+npy = np.hypot(xy[:, 0], xy[:, 1])
+report("np.hypot", [(float(npy[i]), hypot(x, y), (x, y)) for i, (x, y) in enumerate(xy)])
 pp = np.abs(rng.uniform(0.0, 5.0, (n, 2)))
 report("pow", [(pow_(x, y), math.pow(x, y), (x, y)) for x, y in pp])
 report("atan2", [(atan2(y, x), math.atan2(y, x), (y, x)) for x, y in xy])
