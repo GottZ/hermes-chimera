@@ -157,7 +157,10 @@ def test_hello_is_the_first_frame(tmp_path):
         write_frame(p.stdin, {"req": "r", "op": "render", "job": fake_job("h", 0.05).to_json(), "kernel": "numpy",
                               "chunk": 48000})
         first, _ = read_frame(p.stdout)
-        assert first == {"hello": 2, "pid": p.pid}, first
+        assert set(first) == {"hello", "pid"} and first["hello"] == 2 and isinstance(first["pid"], int), first
+        if os.name != "nt":
+            # on Windows a venv's python.exe is a launcher: the interpreter reporting here is its child process
+            assert first["pid"] == p.pid, first
         while True:
             m, _ = read_frame(p.stdout)
             assert "hello" not in m, "one hello only"
@@ -270,6 +273,7 @@ def test_held_worker_joins_before_its_first_request(fake_workers, make_scheduler
 
 # --- nothing to do -----------------------------------------------------------------------------------------
 
+@posix_only   # a Windows venv's python.exe is a launcher, so there the interpreter is never the started process
 def test_same_process_is_not_assigned_again(fake_workers, make_scheduler, jobs):
     """K-S5b.7: without a launcher the reported pid is the started process, which is in the job already."""
     fake, started = jobs()
