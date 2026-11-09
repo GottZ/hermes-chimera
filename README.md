@@ -77,6 +77,8 @@ reference before they are used. If compilation or the check fails, chimera stays
 says why.
 
 numba has no wheels for macOS x86_64, musl Linux (Alpine) and Android; there chimera keeps using numpy.
+Removing chimera-numba leaves numba in Hermes' Python environment until Hermes rebuilds it, so chimera keeps using
+it; set the plugin setting `backend` to `numpy` to stop.
 `hermes plugins update` skips the companion (it is installed without a `.git` folder); update it with
 `hermes plugins install 'GottZ/hermes-chimera#accel' --force --yes-deps --enable`.
 
