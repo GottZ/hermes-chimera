@@ -32,7 +32,9 @@ def hz(midi: float) -> float:
 def yin_frame(frame: np.ndarray, fs: float, fmin: float = 30.0, fmax: float = 1500.0,
               thr: float = 0.15) -> tuple[float, float]:
     """YIN on one frame (len >= window + fs/fmin + 1): (f0, cumulative-mean-normalised difference at tau).
-    Standard YIN: first dip below thr, parabolic refinement."""
+    Standard YIN: first dip below thr, parabolic refinement; no dip below thr = unvoiced (NaN), as in the phrase-split
+    study whose bands K-4.8/K-4.10 use (a global-minimum fallback counted a third of a speech render's frames as
+    voiced, with values down to -10 Hz)."""
     x = np.asarray(frame, dtype=np.float64)
     tmin = max(2, int(fs / fmax))
     tmax = int(fs / fmin)
@@ -61,11 +63,11 @@ def yin_frame(frame: np.ndarray, fs: float, fmin: float = 30.0, fmax: float = 15
             break
         t += 1
     if tau is None:
-        tau = tmin + int(np.argmin(cm[tmin:tmax]))
+        return float("nan"), float(np.min(cm[tmin:tmax]))
     tau = min(max(tau, 1), tmax - 1)
     p, q, s = cm[tau - 1], cm[tau], cm[tau + 1]
     den = p - 2 * q + s
-    shift = 0.5 * (p - s) / den if den != 0 else 0.0
+    shift = min(1.0, max(-1.0, 0.5 * (p - s) / den)) if den > 0 else 0.0   # only around a real minimum
     return fs / (tau + shift), float(q)
 
 

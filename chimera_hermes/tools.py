@@ -250,6 +250,18 @@ def _deadline_warning(est: dict, kernel: str) -> str | None:
                if kernel == "numpy" else ""))
 
 
+def _speak_eta(eng: Any, text: str) -> float:
+    """Expected seconds for speaking ``text``: about 15 characters per second of speech, times the engine's measured
+    real-time factor (EMA) of the kernel in use, spread over its workers (phrase windows render in parallel)."""
+    kernel = _kernel_now(eng)
+    try:
+        rtf = float(eng.status().rtf_estimate[kernel])
+        par = max(1, int(getattr(eng, "workers", 1)))
+    except Exception:
+        rtf, par = (0.45 if kernel == "numba" else 10.0), 1
+    return len(text) / 15.0 * rtf / par
+
+
 def _kernel_now(eng: Any) -> str:
     try:
         return "numba" if eng.status().numba_state == "ready" else "numpy"
@@ -329,7 +341,7 @@ def _speak(a: dict, **kwargs: Any) -> str:
     spd = settings.resolve_speed(speed, preset)
     eng = _vocal.engine()
     want_mp3, fmt_warning = _want_mp3(None)
-    eta = 0.1 * len(text) * (0.45 if _kernel_now(eng) == "numba" else 5.0) / 15.0
+    eta = _speak_eta(eng, text)
 
     def job(progress, cancel) -> dict:
         api = _vocal.api()

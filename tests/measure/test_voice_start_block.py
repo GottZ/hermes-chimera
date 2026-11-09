@@ -14,16 +14,20 @@ from support.pitch import compare_split
 BPM = 84
 
 
-def canon() -> dict:
+def canon(vibrato: float | None = None) -> dict:
     tune = [("D4", "Row,"), ("D4", "row,"), ("D4", "row"), ("E4", "your"), ("F#4", "boat"), ("F#4", "gent-"),
             ("E4", "ly"), ("F#4", "down"), ("G4", "the"), ("A4", "stream.")]
     notes = [{"pitch": p, "beats": 1, "lyric": l} for p, l in tune]
-    return {"bpm": BPM, "voices": [{"body": b, "start": s, "notes": notes}
+    extra = {} if vibrato is None else {"vibrato": vibrato}
+    return {"bpm": BPM, "voices": [{"body": b, "start": s, "notes": notes, **extra}
                                    for b, s in (("female", 0), ("male", 8), ("female", 16))]}
 
 
 def test_voice_start_block(pipeline):
-    report, jobs, mixes, n_mix = pipeline.compile(canon())
+    # real engine without vibrato: the vibrato's phase is part of the random realisation - the template rendered with
+    # six other seed sets differs from itself by f0 p90 58 ct (max 62) at the default 35 ct vibrato, so the speech
+    # band (18 ct) cannot judge it; without vibrato the start-block render measures 11 ct against the render from 0
+    report, jobs, mixes, n_mix = pipeline.compile(canon(0 if pipeline.kind == "real" else None))
     late, vm = jobs[2], mixes[2]
     assert vm.offset == 64 * late.start_block and late.settle_f0 is True
     # voice 3 sings voice 1's tune (same body) 16 beats later: rendered from 0 it would be about
