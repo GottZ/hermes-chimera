@@ -15,10 +15,10 @@ import time
 import urllib.parse
 from typing import Any, Callable
 
-from . import _vocal, media, paths, settings
+from . import _vocal, media, paths, sessions, settings
 
-SLASH_DESCRIPTION = "Chimera voices: status, voices, voice <id>, warmup, test"
-SLASH_ARGS_HINT = "[status|voices|voice <id>|warmup|test]"
+SLASH_DESCRIPTION = "Chimera voices: status, voices, voice <id>, warmup, test, cancel"
+SLASH_ARGS_HINT = "[status|voices|voice <id>|warmup|test|cancel [job id]]"
 CLI_HELP = "Chimera vocal synth"
 COMPANION = "chimera-numba"
 DESKTOP_INSTALL = "Desktop: Capabilities -> Plugins -> Install from repository"
@@ -254,8 +254,38 @@ def _selftest(ctx: Any) -> str:
             f"{getattr(r, 'detail', '')}").strip()
 
 
-def handle_slash(raw_args: str, *, ctx: Any = None) -> str:
-    """``/chimera [status|voices|voice <id>|warmup|test]``; never raises."""
+NOT_PASSED: Any = object()        # Hermes before 0.22.6 calls a command handler with the arguments only
+
+CANCEL_UNSUPPORTED = ("/chimera cancel needs Hermes 0.22.6 or newer: older versions do not tell a command which "
+                      "session it belongs to. Ask the agent to stop the render instead (chimera_job with "
+                      "cancel: true).")
+
+
+def _cancel(rest: str, session_id: Any) -> str:
+    """Stop the unfinished renders of the caller's session (or the one job named), never another session's."""
+    if session_id is NOT_PASSED:
+        return CANCEL_UNSUPPORTED
+    if not isinstance(session_id, str) or not session_id:
+        return "no session here: /chimera cancel stops the renders of the current conversation"
+    reg = _vocal.jobs_if_any()
+    job_id = rest.strip()
+    if job_id:
+        try:
+            if reg is None:
+                raise KeyError(job_id)
+            reg.cancel(job_id, f"session_id:{session_id}", related=lambda: sessions.related_ids(session_id))
+        except KeyError:
+            return f"unknown job {job_id!r} in this conversation"
+        return f"stopping chimera render {job_id}"
+    stopped = sessions.cancel_session(session_id)
+    if not stopped:
+        return "no chimera render is running in this conversation"
+    return f"stopping {len(stopped)} chimera render(s): " + ", ".join(stopped)
+
+
+def handle_slash(raw_args: str, *, ctx: Any = None, session_id: Any = NOT_PASSED) -> str:
+    """``/chimera [status|voices|voice <id>|warmup|test|cancel [job id]]``; never raises. ``session_id`` is the
+    caller's session as Hermes passes it to command handlers (from 0.22.6)."""
     ctx = ctx if ctx is not None else _vocal.ctx()
     parts = (raw_args or "").strip().split(maxsplit=1)
     sub = parts[0].lower() if parts else "status"
@@ -271,14 +301,18 @@ def handle_slash(raw_args: str, *, ctx: Any = None) -> str:
             return _warmup(ctx)
         if sub in ("test", "selftest"):
             return _selftest(ctx)
+        if sub == "cancel":
+            return _cancel(rest, session_id)
         return f"unknown subcommand {sub!r}. Usage: /chimera {SLASH_ARGS_HINT}"
     except Exception as e:  # a slash command answers, it does not crash the session
         return f"/chimera {sub} failed: {type(e).__name__}: {e}"
 
 
-def handle_slash_factory(ctx: Any) -> Callable[[str], str]:
-    def chimera(raw_args: str) -> str:
-        return handle_slash(raw_args, ctx=ctx)
+def handle_slash_factory(ctx: Any) -> Callable[..., str]:
+    # Hermes 0.22.6+ passes session_id (and session_key, source, platform) to a handler that names it as a keyword
+    # (hermes_cli/plugin_command_dispatch.py); older versions call handler(raw_args), leaving NOT_PASSED.
+    def chimera(raw_args: str, *, session_id: Any = NOT_PASSED) -> str:
+        return handle_slash(raw_args, ctx=ctx, session_id=session_id)
 
     return chimera
 

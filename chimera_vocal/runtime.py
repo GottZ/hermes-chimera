@@ -67,6 +67,17 @@ def runtime() -> Runtime:
     return _runtime(None)
 
 
+def existing() -> Runtime | None:
+    """The registered Runtime of this package version, or None when nothing in this process has used the engine yet.
+    Creates nothing (and hashes nothing when no copy has registered anything)."""
+    reg = sys.modules.get(REGISTRY_MODULE)
+    if reg is None:
+        return None
+    key = package_key()
+    with reg.lock:
+        return reg.runtimes.get(key)
+
+
 def _runtime(config: "EngineConfig | None") -> Runtime:
     """runtime() with the config used if the Runtime is created now (get_engine: first config wins)."""
     reg = _registry()

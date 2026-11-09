@@ -16,7 +16,7 @@ import math
 import os
 from typing import Any, Callable
 
-from . import _vocal, media, paths, settings
+from . import _vocal, media, paths, sessions, settings
 
 logger = logging.getLogger(__name__)
 
@@ -151,12 +151,10 @@ def _opt_number(a: dict, key: str, *, lo: float = 0.0, positive: bool = False) -
 
 
 def _owner(kwargs: dict) -> frozenset | None:
-    """Who may wait for a job: the conversation (Hermes passes ``conversation_id`` from 0.23.x canaries on; it
-    survives context compression) and the session (``session_id``, passed by every supported Hermes). A later call
-    matches when it shares one of them."""
-    ids = frozenset(f"{key}:{v}" for key in ("conversation_id", "session_id")
-                    if isinstance(v := kwargs.get(key), str) and v)
-    return ids or None
+    """Who may wait for a job: the conversation (``conversation_id``, passed by newer Hermes) and the session
+    (``session_id``, passed by every supported Hermes). A later call matches when it shares one of them or, after a
+    context compression, when its session continues the job's session (``sessions.py``)."""
+    return sessions.owner_ids(kwargs)
 
 
 def _opt_bool(a: dict, key: str) -> bool | None:
@@ -269,11 +267,11 @@ def _tmp_dir() -> str | None:
         return None
 
 
-def _respond(job_id: str, owner: str | None, wait_s: float | None) -> str:
+def _respond(job_id: str, owner: Any, wait_s: float | None, related: Any = None) -> str:
     from .jobs import wait_budget_s
 
     reg = _vocal.jobs()
-    st = reg.wait(job_id, owner, wait_budget_s(wait_s))
+    st = reg.wait(job_id, owner, wait_budget_s(wait_s), related=related)
     if st.status == "done" and st.result is not None:
         return _ok({**st.result, "job_id": st.id})
     if st.status in ("failed", "cancelled"):
@@ -434,11 +432,12 @@ def _job(a: dict, **kwargs: Any) -> str:
         raise ArgError("`job_id` must be the job id string a chimera tool returned")
     wait_s = _opt_number(a, "wait_s")
     cancel = _opt_bool(a, "cancel")
+    related = sessions.related_lookup(kwargs)
     try:
         if cancel:
-            _vocal.jobs().cancel(job_id.strip(), _owner(kwargs))
-            return _respond(job_id.strip(), _owner(kwargs), 10.0 if wait_s is None else wait_s)
-        return _respond(job_id.strip(), _owner(kwargs), wait_s)
+            _vocal.jobs().cancel(job_id.strip(), _owner(kwargs), related=related)
+            return _respond(job_id.strip(), _owner(kwargs), 10.0 if wait_s is None else wait_s, related)
+        return _respond(job_id.strip(), _owner(kwargs), wait_s, related)
     except KeyError:
         return _fail(f"unknown job {job_id!r}: jobs live in this Hermes process for 2 hours and belong to the "
                      "conversation that started them")

@@ -3,8 +3,9 @@
 Hermes gives a tool call a fixed time limit (420 s by default) that a plugin cannot extend, and drops the result of
 a call that runs over. Every render therefore runs as a job in this process: the tool waits up to a budget below the
 limit and otherwise returns ``status: running`` with a job id; ``chimera_job`` waits again (or cancels). Job ids are
-128-bit random and bound to the conversation/session that started them. The job thread runs in a copy of the caller's
-context, so Hermes' per-profile state (the active HERMES_HOME, kept in context variables) is the caller's.
+128-bit random and bound to the conversation/session that started them (``sessions.py``). The job thread runs in a
+copy of the caller's context, so Hermes' per-profile state (the active HERMES_HOME, kept in context variables) is the
+caller's.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import secrets
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Iterable, Literal
 
 
 @dataclass
@@ -54,6 +55,22 @@ def _foreign(job_owner: Any, owner: Any) -> bool:
     """True when both callers are known and share no id."""
     a, b = _owner(job_owner), _owner(owner)
     return a is not None and b is not None and not (a & b)
+
+
+Related = Callable[[], Iterable[str]]
+
+
+def _still_foreign(job_owner: Any, owner: frozenset | None, related: Related | None) -> bool:
+    """``_foreign``, then once more with the caller's related ids (``related()`` runs only on a mismatch)."""
+    if not _foreign(job_owner, owner):
+        return False
+    if related is None:
+        return True
+    try:
+        extra = _owner(related())
+    except Exception:  # noqa: BLE001 - no related ids known
+        return True
+    return extra is None or _foreign(job_owner, (owner or frozenset()) | extra)
 
 
 class JobRegistry:
@@ -134,16 +151,26 @@ class JobRegistry:
             elapsed = self._clock() - job.started
             return max(0.0, elapsed * (1.0 - job.progress) / job.progress)
 
-    def wait(self, job_id: str, owner: str | None, timeout_s: float) -> JobState:
-        """Wait until the job ends or ``timeout_s`` passes. An unknown id, or an owner that differs from the job's
-        (both set), raises KeyError - reported to the model as "unknown job"."""
+    def _owned(self, job_id: str, owner: Any, related: Related | None) -> JobState:
+        """The job ``job_id`` if ``owner`` may see it; KeyError otherwise. ``related()`` (other ids of the caller,
+        e.g. the sessions its conversation passed through) is asked outside the lock and only on a mismatch."""
         owner = _owner(owner)
-        deadline = time.monotonic() + max(0.0, float(timeout_s))
         with self._cond:
             self._purge()
             job = self._jobs.get(job_id) if isinstance(job_id, str) else None
-            if job is None or _foreign(job.owner, owner):
+            if job is None:
                 raise KeyError(job_id)
+            job_owner = job.owner
+        if _still_foreign(job_owner, owner, related):
+            raise KeyError(job_id)
+        return job
+
+    def wait(self, job_id: str, owner: Any, timeout_s: float, *, related: Related | None = None) -> JobState:
+        """Wait until the job ends or ``timeout_s`` passes. An unknown id, or an owner that differs from the job's
+        (both set, also after ``related``), raises KeyError - reported to the model as "unknown job"."""
+        job = self._owned(job_id, owner, related)
+        deadline = time.monotonic() + max(0.0, float(timeout_s))
+        with self._cond:
             while job.finished is None:
                 left = deadline - time.monotonic()
                 if left <= 0:
@@ -151,16 +178,35 @@ class JobRegistry:
                 self._cond.wait(left)
             return dataclasses.replace(job)
 
-    def cancel(self, job_id: str, owner: Any) -> None:
+    def cancel(self, job_id: str, owner: Any, *, related: Related | None = None) -> None:
         """Set the cancel event of one job (KeyError like ``wait`` for an unknown or foreign job); the engine drops
         its queued work and ends its running workers."""
+        self._owned(job_id, owner, related)
         with self._cond:
-            job = self._jobs.get(job_id) if isinstance(job_id, str) else None
-            if job is None or _foreign(job.owner, owner):
-                raise KeyError(job_id)
             ev = self._cancel.get(job_id)
         if ev is not None:
             ev.set()
+
+    def has_unfinished(self) -> bool:
+        with self._cond:
+            return any(j.finished is None for j in self._jobs.values())
+
+    def cancel_owned(self, ids: Iterable[str]) -> list[str]:
+        """Cancel every unfinished job whose owner shares an id with ``ids`` (jobs without an owner never match);
+        returns their ids."""
+        wanted = _owner(frozenset(ids))
+        if wanted is None:
+            return []
+        out = []
+        with self._cond:
+            for j in self._jobs.values():
+                mine = _owner(j.owner)
+                if j.finished is None and mine is not None and mine & wanted:
+                    ev = self._cancel.get(j.id)
+                    if ev is not None:
+                        ev.set()
+                    out.append(j.id)
+        return out
 
     def cancel_all(self) -> None:
         with self._cond:

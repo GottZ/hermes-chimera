@@ -23,7 +23,7 @@ def skill_path() -> Path:
 
 
 def register(ctx: Any) -> None:
-    from . import _vocal
+    from . import _vocal, sessions
     from .commands import CLI_HELP, SLASH_ARGS_HINT, SLASH_DESCRIPTION, handle_slash_factory, run_cli, setup_cli
     from .provider import build_provider
     from .tools import HANDLERS, SCHEMAS, check_available
@@ -37,3 +37,6 @@ def register(ctx: Any) -> None:
                          args_hint=SLASH_ARGS_HINT)
     ctx.register_cli_command("chimera", help=CLI_HELP, setup_fn=setup_cli, handler_fn=run_cli)
     ctx.register_skill("music", str(skill_path()), description=SKILL_DESCRIPTION, frontmatter=SKILL_FRONTMATTER)
+    # a session that ends stops its unfinished renders (not on_session_end: that one fires after every turn)
+    ctx.register_hook("on_session_finalize", sessions.on_session_finalize)
+    ctx.register_hook("on_session_reset", sessions.on_session_reset)

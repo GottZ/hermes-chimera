@@ -90,6 +90,7 @@ class FakeCtx:
         self.commands: dict[str, dict] = {}
         self.cli_commands: dict[str, dict] = {}
         self.skills: dict[str, dict] = {}
+        self.hooks: dict[str, list[Callable]] = {}
         self.order: list[tuple[str, str]] = []
 
     def register_tts_provider(self, provider) -> None:
@@ -123,6 +124,14 @@ class FakeCtx:
             raise FileNotFoundError(f"SKILL.md not found at {path}")
         self.skills[name] = {"path": path, "description": description, "frontmatter": dict(frontmatter or {})}
         self.order.append(("skill", name))
+
+    def register_hook(self, hook_name: str, callback: Callable) -> None:
+        self.hooks.setdefault(hook_name, []).append(callback)
+        self.order.append(("hook", hook_name))
+
+    def fire(self, hook_name: str, **kwargs: Any) -> list:
+        """Call the hooks registered for ``hook_name`` with keyword arguments, like Hermes' invoke_hook."""
+        return [cb(**kwargs) for cb in self.hooks.get(hook_name, [])]
 
     def get_config(self, key: str, default: Any = None) -> Any:
         return self.settings.get(key, default)

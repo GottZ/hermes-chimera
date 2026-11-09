@@ -88,6 +88,16 @@ def is_error(e: BaseException, name: str) -> bool:
     return any(c.__name__ == name for c in type(e).__mro__)
 
 
+def jobs_if_any() -> Any:
+    """The process-wide JobRegistry if a copy of the plugin in this process has created it, else None; creates no
+    engine (for session hooks and ``/chimera cancel``)."""
+    try:
+        rt = api().runtime.existing()
+    except Exception:  # noqa: BLE001 - engine package unavailable: no jobs either
+        return None
+    return getattr(rt, "jobs", None) if rt is not None else None
+
+
 def jobs() -> Any:
     """The process-wide JobRegistry. It lives on the engine's runtime registry so every copy of the plugin in one
     process (Hermes loads one per profile scope) sees the same jobs; it is created here because the engine package
