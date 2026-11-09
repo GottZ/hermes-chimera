@@ -3,7 +3,7 @@ name = "chimera-s0-track-exporter"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "S0 export of private state and control tracks (V3) via the crate copy with read-only accessors"
+description = "Export of private state and control tracks (V3) via the crate copy with read-only accessors"
 
 [workspace]
 

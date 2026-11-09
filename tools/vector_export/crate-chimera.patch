@@ -146,8 +146,8 @@ index 0000000..4dc135b
 +//! `post`; nothing after it touches the noise list or its states):
 +//!   - `EmulateInherit`: states := saved states of the previous block's final list at index
 +//!     `noise_inherit[j]` (0 for -1) -- what a port kernel does with the recorded track;
-+//!   - `P1Rebase`: the REVIEW-1 P1 emulation "final list against the previous block"
-+//!     (`p1_rebase_noise_states`, only on blocks with a contact re-apply, as in the REVIEW-1 P1 probe).
++//!   - `P1Rebase`: the counter-check, emulating "final list against the previous block"
++//!     (`p1_rebase_noise_states`, only on blocks with a contact re-apply, where the two rules can differ).
 +use super::HumanVoice;
 +use crate::airway::network::NoiseSource;
 +use crate::airway::network::chimera_ext::NoiseFull;
@@ -496,7 +496,7 @@ index 0000000..7d0555e
 +        }
 +    }
 +
-+    /// Self-check only (verbatim from the REVIEW-1 P1 probe): re-derive the filter states of the
++    /// Self-check only (the wrong rule, for the counter-check): re-derive the filter states of the
 +    /// current sources from `prev` (first (src,fwd) match), i.e. as if only the final list had been
 +    /// applied against the previous block's list.
 +    pub fn p1_rebase_noise_states(&mut self, prev: &[NoiseSource]) {

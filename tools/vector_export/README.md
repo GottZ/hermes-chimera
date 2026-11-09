@@ -9,13 +9,13 @@ text in the plugin's [`LICENSE`](../../LICENSE)). Nothing here is part of the pl
 | Path | What |
 |---|---|
 | `exporter/` | Rust binary `chimera-s0-exporter`, linked against the **unmodified** template crate, public API only: `rng`, `decimator`, `glottis`, public part of `topology`, the four track scenarios (descriptions and the template's audio) |
-| `track-exporter/` | Rust binary `chimera-s0-track-exporter`, linked against the patched crate copy: private state (RNG states, network/glottis/voice internals, `apply_source` mask), the V3 control tracks with `noise_inherit`, and the self-check (kernel emulation from `noise_inherit`, the REVIEW-1 P1 counter-check) |
+| `track-exporter/` | Rust binary `chimera-s0-track-exporter`, linked against the patched crate copy: private state (RNG states, network/glottis/voice internals, `apply_source` mask), the V3 control tracks with `noise_inherit`, and the self-check (kernel emulation from `noise_inherit`, counter-check with the rule "final list against the previous block") |
 | `common/scenarios.rs` | shared by both binaries (compiled against each one's `chimera`): scenarios, source sets, bodies |
 | `crate-chimera.patch` | the instrumentation of the crate copy, as a diff against `crates/chimera/{Cargo.toml,src}` of the template: read-only accessor modules `src/chimera_ext/*.rs`, one `#[path]` line per touched file, four hook calls in `HumanVoice::control`, standalone `Cargo.toml`. With no recorder started the copy renders bit-identically to the template |
 | `prepare.py` | creates a work directory: copy of this directory, `upstream` (symlink to the template checkout), `crate-chimera` (template crate + patch, applied by a strict built-in diff reader) |
 | `assemble.py` | selects, cross-checks and writes `tests/vectors/{rng,decimator,glottis,topology,track-*}.json` and `manifest-rust.json` |
 | `verify.py` | re-reads the vectors as a consumer would and compares them with the full tracks |
-| `compare_shift.py` | evidence for the S1-V3fix correction: compares corrected full tracks with pre-fix ones (needs the old files) |
+| `compare_shift.py` | evidence for the track-row correction (`tests/vectors/README.md`, "Correction"): compares corrected full tracks with pre-fix ones (needs the old files) |
 | `r1/` | Rust binary `chimera-vectors` (public API): G2P, phrase and song plans, geometry, held vowels, "Hello world.", golden self-check, libm probe — the raw material of `audio-head.json`, `g2p.json`, `plan_phrases.json`, `plan_song.json`, `geometry9.json` and `chimera_vocal/dsp/selftest.json` |
 
 ## Re-creating the vectors
@@ -52,6 +52,6 @@ CHIMERA_UPSTREAM_HEAD=092b16ce12b927d473c884ca2dfae53ce1b995df "$CARGO_TARGET_DI
   repository (see `tests/vectors/README.md`, "Repository trims"): only its `source` text is updated in place, and
   the script checks that every stored array is a prefix of the export.
 - The output is deterministic: two runs from the same template commit produce byte-identical files.
-- `r1-out/` holds the raw R1 files (`*.json` pretty-printed, `*.f32` raw little-endian float32); the repository files
-  listed in the table were derived from them (compact JSON, 4 800-sample audio heads); their `what`/`format` keys
-  describe the conversion.
+- `r1-out/` holds the raw files of `r1/` (`*.json` pretty-printed, `*.f32` raw little-endian float32); the
+  repository files listed in the table were derived from them (compact JSON, 4 800-sample audio heads); their
+  `what`/`format` keys describe the conversion.

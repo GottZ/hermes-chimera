@@ -1,4 +1,4 @@
-//! S0 export through the crate copy (`../crate-chimera`, upstream 092b16ce12b9 + read-only accessors
+//! Export through the crate copy (`../crate-chimera`, upstream 092b16ce12b9 + read-only accessors
 //! and the control-step recorder): private state for V1/V2/V2d/V5, the V3 control tracks with
 //! `noise_inherit`, and the self-checks against the unmodified upstream renders.
 //!
@@ -227,7 +227,7 @@ fn main() {
         rec::start(Mode::EmulateInherit);
         let emulated = render(&sc, &mut v);
         let rows_e = rec::take().unwrap().rows;
-        // (d) counter-check: REVIEW-1 P1 emulation "final list against the previous block"
+        // (d) counter-check: emulation of the rule "final list against the previous block"
         let mut v = new_voice(&sc);
         rec::start(Mode::P1Rebase);
         let p1 = render(&sc, &mut v);
