@@ -142,3 +142,44 @@ def test_apply_settings_takes_effect(fake_workers, make_engine):
     assert eng.cache_base == cache and eng.config.cache_dir == cache
     report = eng.check_score({"bpm": 100, "voices": [{"notes": [{"pitch": "C4", "beats": 1}]}] * 3})
     assert not report.ok and any("limit of 2" in i.message for i in report.issues)
+
+
+def test_request_settings_override_engine_settings(stub_planner, fake_workers, make_engine, monkeypatch, tmp_path):
+    """R2A-23 (engine part): one engine serves every Hermes profile of a process and holds the settings applied last.
+    A request that names ``text_prep``, ``max_voices`` and ``backend`` renders with those, not with the engine's.
+    Red proof: the engine read ``self.config`` at render time (the keywords did not exist)."""
+    from chimera_vocal import scheduler as sched_mod
+    eng = make_engine(workers=2, backend="auto", text_prep=True, max_voices=8)
+    eng.apply_settings(EngineConfig(backend="numpy", workers=2, text_prep=False, max_voices=1))  # another profile
+    text = "Dr. Smith paid $5."
+
+    def prepared() -> int:          # the stub's prepare_text records each call (and returns the text unchanged)
+        return len(stub_planner.calls_of("prepare_text"))
+
+    n = prepared()
+    eng.speak(text, "male", text_prep=True)
+    assert prepared() == n + 1, "text_prep=True must prepare the text although the engine setting is off"
+    eng.speak(text, "male")
+    assert prepared() == n + 1, "without the keyword the engine setting (off) applies"
+    eng.apply_settings(EngineConfig(backend="numpy", workers=2, text_prep=True, max_voices=1))
+    eng.speak(text, "male", text_prep=False)
+    eng.speak_to_wav(text, str(tmp_path / "a.wav"), "male", text_prep=False)
+    b"".join(eng.speak_pcm16(text, "male", text_prep=False, tmp_dir=str(tmp_path)))
+    assert prepared() == n + 1
+    eng.speak(text, "male")
+    assert prepared() == n + 2
+
+    two = {"bpm": 100, "voices": [{"notes": [{"pitch": "C4", "beats": 1}]}] * 2}
+    assert not eng.check_score(two).ok
+    assert eng.check_score(two, max_voices=8).ok
+    assert not eng.check_score(two, max_voices=1).ok
+
+    monkeypatch.setattr(sched_mod, "_numba_installed", lambda: True)
+    monkeypatch.setattr(sched_mod, "_marker_ok", lambda cache_base: {"content_hash": "warm"})
+    assert eng.scheduler.backend == "numpy"
+    assert eng.choose_kernel() == "numpy" and eng.choose_kernel("numpy") == "numpy"
+    assert eng.choose_kernel("auto") == "numba" and eng.choose_kernel("numba") == "numba"
+    eng.apply_settings(EngineConfig(backend="auto", workers=2, text_prep=True, max_voices=1))
+    assert eng.choose_kernel() == "numba" and eng.choose_kernel("numpy") == "numpy"
+    _, kernel = eng.speak(text, "male", backend="numpy")
+    assert kernel == "numpy"

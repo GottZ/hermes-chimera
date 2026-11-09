@@ -232,6 +232,21 @@ class Engine:
     def _req_id(self, kind: str) -> str:
         return f"{kind}{next(self._seq)}-{uuid.uuid4().hex[:8]}"
 
+    def choose_kernel(self, backend: "Literal['auto', 'numba', 'numpy'] | None" = None) -> Literal["numba", "numpy"]:
+        """Kernel for one request. ``backend`` is the setting of whoever makes the request (None = the engine's
+        current setting). One engine serves every Hermes profile of a process and its own setting is the one applied
+        last, so a request that names its backend is not steered by another profile: ``numpy`` stays numpy, and
+        ``auto``/``numba`` render with numba once it is warm even while the engine's setting is ``numpy``."""
+        sched = self.scheduler
+        if backend is None:
+            return sched.choose_kernel()
+        if backend == "numpy":
+            return "numpy"
+        with sched._lock:
+            if sched.backend != "numpy":
+                return sched.choose_kernel()
+            return "numba" if sched.numba_state() == "ready" and not sched._spawn_failed else "numpy"
+
     def _submit_all(self, req, jobs, sinks, ev: threading.Event) -> list:
         out = []
         for j, s in zip(jobs, sinks):
@@ -257,7 +272,8 @@ class Engine:
             raise
 
     # speech ------------------------------------------------------------------------------------------------
-    def _plan_speech(self, text: str, voice, speed, settle_first: bool, faithful: bool = False):
+    def _plan_speech(self, text: str, voice, speed, settle_first: bool, faithful: bool = False,
+                     text_prep: bool | None = None):
         from .music.planning import planner_api
         from .speech import plan_speech
         preset = self._preset(voice)
@@ -267,21 +283,24 @@ class Engine:
             return plan_speech(text, preset, speed=speed, g2p=planner_api().default_g2p(), text_prep=False,
                                split=False, settle_first=False)
         return plan_speech(text, preset, speed=speed, g2p=planner_api().default_g2p(),
-                           text_prep=self.config.text_prep, settle_first=settle_first)
+                           text_prep=self.config.text_prep if text_prep is None else bool(text_prep),
+                           settle_first=settle_first)
 
     def speak(self, text: str, voice: "str | VoicePreset" = "male", *, speed: float | None = None,
-              settle_first: bool = True, faithful: bool = False,
+              settle_first: bool = True, faithful: bool = False, text_prep: bool | None = None,
+              backend: "Literal['auto', 'numba', 'numpy'] | None" = None,
               cancel: threading.Event | None = None) -> "tuple[Audio, str]":
         """Speak ``text`` into memory. ``faithful=True`` renders like the template's ``chimera render text`` (sample
-        for sample within rounding): no text preparation, no phrase windows, no settled first pitch. For long texts
+        for sample within rounding): no text preparation, no phrase windows, no settled first pitch. ``text_prep``
+        and ``backend`` fix those settings for this request (None = the engine's current settings). For long texts
         prefer ``speak_to_wav`` (memory stays small)."""
         self._need_numpy()
         from .scheduler import MemorySink, Request
         from .speech import assemble
-        jobs, n_total = self._plan_speech(text, voice, speed, settle_first, faithful)
+        jobs, n_total = self._plan_speech(text, voice, speed, settle_first, faithful, text_prep)
         if cancel is not None and cancel.is_set():
             raise RenderCancelled("cancelled before start")
-        req = Request(self._req_id("speak"), "speech", self.scheduler.choose_kernel())
+        req = Request(self._req_id("speak"), "speech", self.choose_kernel(backend))
         ev = threading.Event()
         sinks = [MemorySink(j.n_out) for j in jobs]
         futs = self._submit_all(req, jobs, sinks, ev)
@@ -290,19 +309,21 @@ class Engine:
 
     def speak_to_wav(self, text: str, path: str, voice: "str | VoicePreset" = "male", *,
                      speed: float | None = None, settle_first: bool = True, faithful: bool = False,
+                     text_prep: bool | None = None, backend: "Literal['auto', 'numba', 'numpy'] | None" = None,
                      tmp_dir: str | None = None, cancel: threading.Event | None = None) -> "SpeechResult":
         """Speak ``text`` into a 16-bit WAV at ``path`` (the same bytes as ``speak(...)[0].to_wav(path)``). The
         windows go to one temporary file in ``tmp_dir`` (default: the folder of ``path``) and the WAV is written
-        block by block, so memory does not grow with the length of the text."""
+        block by block, so memory does not grow with the length of the text. ``text_prep``/``backend`` as in
+        ``speak``."""
         self._need_numpy()
         from .core.wavio import write_wav_chunked
         from .scheduler import Request
         from .speech import WindowStore
         t_start = time.perf_counter()
-        jobs, n_total = self._plan_speech(text, voice, speed, settle_first, faithful)
+        jobs, n_total = self._plan_speech(text, voice, speed, settle_first, faithful, text_prep)
         if cancel is not None and cancel.is_set():
             raise RenderCancelled("cancelled before start")
-        req = Request(self._req_id("speak"), "speech", self.scheduler.choose_kernel())
+        req = Request(self._req_id("speak"), "speech", self.choose_kernel(backend))
         out_dir = os.path.dirname(os.path.abspath(os.fspath(path)))
         os.makedirs(tmp_dir or out_dir, exist_ok=True)
         store = WindowStore(jobs, n_total, tmp_dir or out_dir)
@@ -319,18 +340,20 @@ class Engine:
         return SpeechResult(os.fspath(path), n_total / 48000.0, 48000, req.kernel, time.perf_counter() - t_start)
 
     def speak_pcm16(self, text: str, voice: "str | VoicePreset" = "male", *, speed: float | None = None,
-                    faithful: bool = False, tmp_dir: str | None = None,
+                    faithful: bool = False, text_prep: bool | None = None,
+                    backend: "Literal['auto', 'numba', 'numpy'] | None" = None, tmp_dir: str | None = None,
                     cancel: threading.Event | None = None) -> Iterator[bytes]:
         """Generator of int16 LE mono bytes at 48 kHz, window by window; closing it cancels the remaining windows.
-        Windows are kept in a temporary file in ``tmp_dir`` (default: the system temp folder)."""
+        Windows are kept in a temporary file in ``tmp_dir`` (default: the system temp folder). ``text_prep``/
+        ``backend`` as in ``speak``."""
         self._need_numpy()
         from .core.wavio import wav_bytes
         from .scheduler import Request
         from .speech import WindowStore
-        jobs, n_total = self._plan_speech(text, voice, speed, True, faithful)
+        jobs, n_total = self._plan_speech(text, voice, speed, True, faithful, text_prep)
         if cancel is not None and cancel.is_set():
             raise RenderCancelled("cancelled before start")
-        req = Request(self._req_id("stream"), "speech", self.scheduler.choose_kernel())
+        req = Request(self._req_id("stream"), "speech", self.choose_kernel(backend))
         if tmp_dir:
             os.makedirs(tmp_dir, exist_ok=True)
         store = WindowStore(jobs, n_total, tmp_dir or tempfile.gettempdir())
@@ -351,11 +374,14 @@ class Engine:
             store.close()
 
     # music -------------------------------------------------------------------------------------------------
-    def check_score(self, score: "dict | str") -> "ScoreReport":
+    def check_score(self, score: "dict | str", *, max_voices: int | None = None) -> "ScoreReport":
+        """Validate ``score``; ``max_voices`` fixes the ensemble limit for this request (None = the engine's
+        current setting)."""
         from .music.estimate import DEFAULT_COMPILE_S, estimate_kernels
         from .music.schema import validate_score
         c = self.config
-        report = validate_score(score, g2p=_LazyG2P(), max_voices=c.max_voices, max_seconds=c.max_score_seconds,
+        limit = c.max_voices if max_voices is None else int(max_voices)
+        report = validate_score(score, g2p=_LazyG2P(), max_voices=limit, max_seconds=c.max_score_seconds,
                                 max_voice_seconds=c.max_voice_seconds)
         if not report.ok:
             return report
@@ -366,10 +392,13 @@ class Engine:
 
     def render_score(self, score: "dict | str", out_dir: str, stem: str, *, want_mp3: bool = False,
                      progress: Callable[[float], None] | None = None,
-                     cancel: threading.Event | None = None, tmp_dir: str | None = None) -> ScoreResult:
+                     cancel: threading.Event | None = None, tmp_dir: str | None = None,
+                     max_voices: int | None = None,
+                     backend: "Literal['auto', 'numba', 'numpy'] | None" = None) -> ScoreResult:
         """Render a score into ``<out_dir>/<stem>.wav``. Voice tracks and the mix sum live in a temporary folder
         under ``tmp_dir`` (default ``out_dir``) that is removed afterwards; give a folder your housekeeping cleans,
-        because a killed process cannot remove it."""
+        because a killed process cannot remove it. ``max_voices``/``backend`` fix those settings for this request
+        (None = the engine's current settings)."""
         if want_mp3:
             raise ValueError("render_score writes WAV only; convert to MP3 outside the engine (want_mp3=False)")
         self._need_numpy()
@@ -378,7 +407,7 @@ class Engine:
         from .music.planning import planner_api
         from .scheduler import FileSink, Request
         t_start = time.perf_counter()
-        report = self.check_score(score)
+        report = self.check_score(score, max_voices=max_voices)
         if not report.ok:
             raise ScoreError([i for i in report.issues if i.severity == "error"])
         if cancel is not None and cancel.is_set():
@@ -386,7 +415,7 @@ class Engine:
         jobs, mixes, n_mix = compile_score(report, g2p=planner_api().default_g2p())
         norm = report.normalized
         stereo = bool(norm["stereo"]) if norm["stereo"] != "auto" else any(v["pan"] != 0 for v in norm["voices"])
-        req = Request(self._req_id("score"), "music", self.scheduler.choose_kernel())
+        req = Request(self._req_id("score"), "music", self.choose_kernel(backend))
         os.makedirs(out_dir, exist_ok=True)
         if tmp_dir:
             os.makedirs(tmp_dir, exist_ok=True)
