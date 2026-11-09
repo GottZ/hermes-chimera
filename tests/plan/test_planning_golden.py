@@ -142,7 +142,7 @@ def test_vowel_artic_presets_and_unknown():
     assert vowel_artic("i", BodyMix(0.7, 1.0)) == vowel_artic("i", BODY_MIX_CHILD)    # child weight 1 = preset
     assert vowel_artic("i", BodyMix(1.0, 0.0)) == vowel_artic("i", BODY_MIX_FEMALE)
     for mix in (BODY_MIX_MALE, BodyMix(0.5, 0.5)):
-        assert vowel_artic("ʉ", mix) is None          # tokenised vowel without calibration (R1-P §2)
+        assert vowel_artic("ʉ", mix) is None          # tokenised vowel without a calibrated target
         assert vowel_artic("aɪ", mix) is None         # diphthongs are expanded before vowel_artic
     a = vowel_artic("ɝ", BODY_MIX_MALE)
     assert a["ttCurl"] > 0.05 and "ttX" in a and "ttY" in a     # rhotic: tip position included

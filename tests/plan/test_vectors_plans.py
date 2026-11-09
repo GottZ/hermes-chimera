@@ -1,5 +1,5 @@
 """K-1.6 — the chain text -> phrases -> plan and lyrics -> syllables -> song plan against vectors exported from
-the template (tests/vectors/{g2p,plan_phrases,plan_song}.json; recon/R1-work/vectors/src/main.rs):
+the template (tests/vectors/{g2p,plan_phrases,plan_song}.json; tools/vector_export/r1/src/main.rs):
 ``render text`` male (t0 0.05, f0 112), "Twinkle little" on 4 notes at 100 bpm (male, vibrato 35).
 
 Red proof (TESTPLAN): ignore ``PlanOptions.f0``.

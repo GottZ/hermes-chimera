@@ -1,7 +1,7 @@
 """K-1.7 — singing behaviour (port of crates/chimera/tests/sing_fast.rs): every vowel lands on its beat (± 1e-6 s)
 however short the note, keeps >= 20 ms, consonant pile-ups slip < 8 ms per note, roomy notes keep their
 consonants, onset consonants carry the new pitch, a delayed cluster closure stays inside a short sung stop.
-This is what makes several voices synchronous by construction (DESIGN §8.3).
+This is what makes several voices synchronous by construction.
 
 Red proof (TESTPLAN): put the onset consonants after the beat instead of before it.
 """

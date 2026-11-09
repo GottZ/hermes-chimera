@@ -1,4 +1,4 @@
-"""C1 text tests: shared helpers as fixtures (this folder has no __init__.py, INTERFACES change note 1).
+"""Text tests: shared helpers as fixtures (test folders have no __init__.py; pytest runs with --import-mode=importlib).
 
 ``json_of`` turns typed results into the template's serde JSON; ``t1_diff`` is the T1 comparison of
 golden_phonetics_text.rs ``same``: deep equality, numbers compared as f64 (``1`` equals ``1.0``),

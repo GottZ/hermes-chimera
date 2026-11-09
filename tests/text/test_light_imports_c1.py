@@ -1,4 +1,4 @@
-"""INTERFACES §1 rule 1: text and planning are pure Python; importing them never imports numpy/numba."""
+"""Text and planning are pure Python: importing them never imports numpy/numba (the package must load without numpy)."""
 
 import subprocess
 import sys

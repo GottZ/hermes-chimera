@@ -18,7 +18,7 @@ def test_golden_ipa(mismatches):
 
 def test_ipa_nfc_composes_before_lookup(mismatches):
     """NFC first (ipa.rs:32): a decomposed a+U+0303 becomes the unknown 'ã' and vanishes with its base;
-    a decomposed ɛ+U+0303 has no precomposed form and keeps its base (R1-P §2)."""
+    a decomposed ɛ+U+0303 has no precomposed form and keeps its base."""
     m = mismatches("tokenize_ipa NFC")
     m.check("a + combining tilde", [], tokenize_ipa("ã"))
     m.check("e + combining acute", [], tokenize_ipa("é"))

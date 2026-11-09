@@ -1,8 +1,8 @@
-"""C1 planning tests: the plan comparison of golden_planning.rs ``cmp`` at the port's tolerances.
+"""Planning tests: the plan comparison of golden_planning.rs ``cmp`` at the port's tolerances.
 
 Objects need the same keys; strings, labels and booleans exact; ``speed``, ``releaseHold`` and ``tag`` exact
 (the template's EXACT list); every other number T1n: <= 1e-12 relative with floor 1e-12 (TESTPLAN §1;
-the template allows 1e-9). Folder without __init__.py (INTERFACES change note 1).
+the template allows 1e-9). Folder without __init__.py (pytest --import-mode=importlib).
 """
 
 from __future__ import annotations
