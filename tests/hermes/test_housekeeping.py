@@ -115,9 +115,14 @@ def test_private_modes(registered, plugin, tool):
         assert stat.S_IMODE(os.stat(f).st_mode) == 0o600, (f, oct(os.stat(f).st_mode))
 
 
-def test_failed_render_drops_reserved_file(registered, plugin, tool):
-    plugin.engine.fail["speak"] = RuntimeError("worker died twice")
-    out = tool(registered, "chimera_speak", {"text": "Nothing comes of this.", "wait_s": 30})
+@pytest.mark.parametrize("method,tool_name,args", [
+    ("render_score", "chimera_render", {"score": SCORE, "wait_s": 30}),
+    ("speak", "chimera_speak", {"text": "Nothing comes of this.", "wait_s": 30})])
+def test_failed_render_drops_reserved_file(registered, plugin, tool, method, tool_name, args):
+    """R2A-05: the output name is reserved (an empty file) before rendering; a failed render must not leave it."""
+    plugin.engine.fail[method] = RuntimeError("worker died twice")
+    out = tool(registered, tool_name, args)
     assert out["success"] is False
     audio = plugin.hermes.home / "cache" / "audio" / "chimera"
-    assert [p.name for p in audio.iterdir() if p.suffix == ".wav"] == []
+    left = [p.name for p in audio.iterdir()] if audio.is_dir() else []
+    assert left == [], left
