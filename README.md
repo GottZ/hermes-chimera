@@ -100,7 +100,8 @@ Hermes gives one tool call a fixed time limit (420 s by default). Longer renders
 the agent fetches the result with `chimera_job` (or stops it with `cancel: true`). A render belongs to the
 conversation that started it, also after Hermes compressed the conversation's context; other conversations cannot
 fetch or stop it. When the conversation's session ends (`/new`, leaving the CLI, closing the session in the desktop
-app, stopping the gateway) its unfinished renders stop; `/chimera cancel` stops them by hand (Hermes 0.22.6 or
+app, stopping the gateway, or no Hermes client having had the conversation open for `sessions.orphan_end_grace_s`,
+default 300 s) its unfinished renders stop; `/chimera cancel` stops them by hand (Hermes 0.22.6 or
 newer; on older Hermes ask the agent to cancel). Finished results are kept for two hours. Results are files under
 `<HERMES_HOME>/cache/audio/chimera/`; the agent puts a `MEDIA:` line into its reply and Hermes delivers the file (a
 player in the desktop app, an audio file in messaging apps).
@@ -153,7 +154,8 @@ The tool `chimera_speak` also takes `faithful` per call.
   subprocess to make MP3 files of music (`ffmpeg -hide_banner -loglevel error -y -i <wav> -codec:a libmp3lame -q:a 2
   <mp3>`, no stdin, time limit, no console window); without ffmpeg music stays WAV.
 - **Background work.** Long renders continue on a thread in the Hermes process after the tool call returns; results
-  are kept two hours. A render stops when its session ends (chimera registers the hooks `on_session_finalize` and
+  are kept two hours. A render stops when its session ends, including when no client has had the conversation open
+  for Hermes' `sessions.orphan_end_grace_s` (default 300 s; chimera registers the hooks `on_session_finalize` and
   `on_session_reset`), with `chimera_job` and `cancel: true`, or with `/chimera cancel`.
 - **Files written.** Only `<HERMES_HOME>/cache/audio/chimera/` (rendered audio, deleted after `keep_days`) and
   `<HERMES_HOME>/cache/chimera/`: `numba/` (compiled kernels, one folder per chimera version; the folder in use is
