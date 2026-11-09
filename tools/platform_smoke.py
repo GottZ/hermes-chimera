@@ -47,6 +47,7 @@ sys.path.insert(1, str(REPO / "tests"))      # the suite's helpers (support, sup
 
 WORKER_MARK = "chimera_vocal.worker"         # in the command line of every render worker (scheduler BOOTSTRAP)
 SPAWNED: list[int] = []                      # pid of every worker the scheduler started in this process
+SPAWNED_WORKERS: list = []                   # the same workers (to end the ones a failed probe leaves behind)
 TAG_VAR = "CHIMERA_SMOKE_TAG"                # set once per run; workers inherit it (scheduler copies os.environ)
 BASELINE: set[int] = set()                   # worker processes that existed before this run
 HELLO = "Hello world."
@@ -94,6 +95,7 @@ def track_workers() -> None:
     def init(self, s):
         orig(self, s)
         SPAWNED.append(self.pid)
+        SPAWNED_WORKERS.append(self)
 
     sched._Worker.__init__ = init
 
@@ -255,6 +257,9 @@ def phase_probe(rep: Report, cache: Path) -> bool:
     rep.check("probe: a render worker answers a selftest within 120 s", ok,
               "no answer" if th.is_alive() else repr(box.get("exc") or res))
     eng.shutdown()
+    if th.is_alive():
+        for w in SPAWNED_WORKERS:            # the selftest worker is not in the scheduler's lists
+            w.kill()
     return ok
 
 
