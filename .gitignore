@@ -7,7 +7,7 @@ venv/
 # numba on-disk cache (index + compiled objects)
 *.nbi
 *.nbc
-# rendered audio stays out of the repository (test fixtures under tests/ are allowed)
+# no audio binaries in the repository (catalog rule): rendered audio and fixtures stay outside
 *.wav
-!tests/**/*.wav
 *.mp3
+*.f32
