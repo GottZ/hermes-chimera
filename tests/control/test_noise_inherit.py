@@ -6,8 +6,6 @@ its calls (list A from `list_a` where exported, then the final list) against the
 give the exported `noise_inherit`.
 """
 
-import pytest
-
 G = (70, 13, 11)            # glottal aspiration source of the male tract (V3 hello-male)
 C1 = (45, 45, 44)           # a constriction source
 C2 = (42, 44, 40)           # another one
@@ -89,9 +87,10 @@ def test_track_replay_all_blocks(c2):
     assert checked == 750 + 904 + 2909 + 7725
 
 
-@pytest.mark.parametrize("bad", [[], [0, 1]])
-def test_compose_rejects_nothing_silently(bad):
-    """compose_inherit maps -1 through and indexes `first` only with valid entries."""
+def test_compose_maps_resets_through():
+    """compose_inherit: a reset (-1) in the second call stays a reset; valid entries index the first mapping."""
     from chimera_vocal.control.airway import compose_inherit
 
-    assert compose_inherit([0, 1], [-1] * len(bad)) == [-1] * len(bad)
+    assert compose_inherit([0, 1], []) == []
+    assert compose_inherit([0, 1], [-1, -1]) == [-1, -1]
+    assert compose_inherit([-1, 4], [1, 0, -1]) == [4, -1, -1]
