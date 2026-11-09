@@ -73,12 +73,19 @@ def test_track_vectors(c2, scenario, impl_name):
     crit = [b for b in trk.p1_critical if b in bad]
     if crit:
         failures.append(f"P1-critical blocks wrong: {crit}")
-    for i, b in enumerate(trk.float_blocks.tolist()):
+    fb = trk.float_blocks.tolist()
+    lagged_checked = 0
+    for i, b in enumerate(fb):
         exp = {f: trk.floats[f][i] for f in c2.FLOAT_FIELDS}
-        failures += c2.row_failures(track, b, exp, f"block {b}", ints=False)
+        nxt = {f: trk.floats[f][i + 1] for f in c2.FLOAT_FIELDS} if i + 1 < len(fb) and fb[i + 1] == b + 1 else None
+        lagged_checked += nxt is not None
+        failures += c2.row_failures(track, b, exp, f"block {b}", ints=False, nxt=nxt)
         w = c2.worst_rel([clocks[b]], [trk.floats["clock"][i]], c2.T2_FLOOR)
         if w >= c2.T2_TOL:
             failures.append(f"block {b}: clock {clocks[b]!r} vs {trk.floats['clock'][i]!r}")
+    # p_lung / glot f0 / effort need the exported NEXT block (conftest G_LAGGED); song-female exports only every
+    # 123rd block (no consecutive pair) -- there the lab variant covers them
+    assert lagged_checked >= (0 if scenario == "song-female" else 2), lagged_checked
     assert not failures, f"{scenario} ({impl_name}): {len(bad)} blocks with integer differences; " + "\n".join(
         failures[:25])
 
@@ -113,20 +120,26 @@ def test_track_full_lab(c2, lab_refs, scenario):
     model.initial()
     c2.apply_ops(model, trk.scenario["ops"])
     failures = []
-    for b in range(full["n_blocks"]):
-        ch = model.advance(1)
+    nb = full["n_blocks"]
+
+    def row(b):
         exp = {f: blk[f][b] for f in ("tube_area", "tube_min", "tube_len", "velum_area", "glot_par", "p_lung")}
         exp["noise_par"] = [list(e) for e in blk["noise_par"][b]] + [[0.0] * 3] * (3 - blk["noise_n"][b])
         exp["noise_n"] = blk["noise_n"][b]
         exp["noise_idx"] = [list(e) for e in blk["noise_idx"][b]] + [[-1] * 3] * (3 - blk["noise_n"][b])
         exp["noise_inherit"] = list(blk["noise_inherit"][b]) + [-1] * (3 - blk["noise_n"][b])
-        f = c2.row_failures(ch, 0, exp, f"block {b}")
-        state = {"clock": model.clock, "gate": model.gate, "f0_glide": model.f0}
+        return exp
+
+    for b in range(nb):
+        ch = model.advance(1)
+        f = c2.row_failures(ch, 0, row(b), f"block {b}", nxt=row(b + 1) if b + 1 < nb else None)
         ct, _, cb, _ = model.airway.contacts()
-        state.update(contact_tip=ct, contact_body=cb)
-        for k, v in state.items():
-            if c2.worst_rel([v], [blk[k][b]], c2.T2_FLOOR) >= c2.T2_TOL:
-                f.append(f"block {b}: {k} {v!r} vs {blk[k][b]!r}")
+        state = {"clock": (model.clock, b), "contact_tip": (ct, b), "contact_body": (cb, b)}
+        if b + 1 < nb:                                    # snapshots before the breath/pitch update: next row
+            state.update(gate=(model.gate, b + 1), f0_glide=(model.f0, b + 1))
+        for k, (v, r) in state.items():
+            if c2.worst_rel([v], [blk[k][r]], c2.T2_FLOOR) >= c2.T2_TOL:
+                f.append(f"block {b}: {k} {v!r} vs {blk[k][r]!r}")
         for k, arr in (("artic_x", model.artic.x), ("artic_v", model.artic.v)):
             if c2.worst_rel(arr, blk[k][b], c2.T2_FLOOR) >= c2.T2_TOL:
                 f.append(f"block {b}: {k}")

@@ -28,6 +28,14 @@ TEMPLATE_ARTIC_SPECS = (
 TEMPLATE_NEUTRAL = (0.6, 2.9, 6.85, 6.45, 7.3, 0.0, 0.0, 0.7, 0.2, 0.5, 0.0, -0.15, 0.0, 0.0, 0.0, 0.0, 0.0)
 
 T2_TOL, T2_FLOOR = 1e-9, 1e-6
+
+# V3 rows are snapshots taken inside control() right after the airway apply/reapply and BEFORE its breath and pitch
+# update (exporter hook, lab/vectors/crate-chimera/src/voice/human_voice.rs:478 vs. the template's :477-501): in an
+# exported row b, `p_lung`, `glot_par[G_F0]`, `glot_par[G_EFFORT]` (and the full export's `gate`, `f0_glide`) are
+# the values control step b-1 set. A TrackChunk row b carries the values control step b sets -- what the kernel
+# uses during block b (INTERFACES §6.3/§6.4). So these fields of TrackChunk row b compare with exported row b + 1
+# (measured in S1: same row off by up to 100 %, next row <= 2e-16 relative; reports/S1-C2.md, request C2-3).
+G_LAGGED = (0, 7)        # core.glottis_params G_F0, G_EFFORT
 DT_48K = 128.0 / 96000.0      # ctrl_every / fs at 48 kHz, m = 2 (human_voice.rs:427)
 
 # golden JSON outline key -> frame_layout outline name
@@ -280,8 +288,12 @@ def new_model(trk: types.SimpleNamespace, geometry, **kw):
 
 
 def row_failures(chunk, row: int, exp: Mapping[str, Any], label: str, *, floats: bool = True,
-                 ints: bool = True) -> list[str]:
-    """Differences of TrackChunk row ``row`` against an expected row (T2 floats, T2i integers)."""
+                 ints: bool = True, nxt: Mapping[str, Any] | None = None) -> list[str]:
+    """Differences of TrackChunk row ``row`` against an exported row (T2 floats, T2i integers).
+
+    ``exp`` is the exported row of the same block, ``nxt`` the exported row of the NEXT block (or None when not
+    exported): p_lung and glot_par[G_F0], glot_par[G_EFFORT] are compared with ``nxt`` (see G_LAGGED), the other
+    fields with ``exp``. The `initial` row has no lag (no control step ran)."""
     out: list[str] = []
     if ints:
         n = int(chunk.noise_n[row])
@@ -294,7 +306,19 @@ def row_failures(chunk, row: int, exp: Mapping[str, Any], label: str, *, floats:
                        f"{np.asarray(exp['noise_inherit']).tolist()}")
     if floats:
         for f in FLOAT_FIELDS:
-            w = worst_rel(np.atleast_1d(getattr(chunk, f)[row]), np.atleast_1d(exp[f]), T2_FLOOR)
+            mine, want = np.atleast_1d(getattr(chunk, f)[row]), np.atleast_1d(np.asarray(exp[f], dtype=np.float64))
+            if f == "p_lung":
+                if nxt is None:
+                    continue
+                want = np.atleast_1d(np.asarray(nxt[f], dtype=np.float64))
+            elif f == "glot_par":
+                want = want.copy()
+                if nxt is None:
+                    mine = np.delete(mine, G_LAGGED)
+                    want = np.delete(want, G_LAGGED)
+                else:
+                    want[list(G_LAGGED)] = np.asarray(nxt[f], dtype=np.float64)[list(G_LAGGED)]
+            w = worst_rel(mine, want, T2_FLOOR)
             if w >= T2_TOL:
                 out.append(f"{label}: {f} worst relative difference {w:.3e}")
     return out
@@ -342,7 +366,7 @@ def repeated_clock(k: int, dt: float = DT_48K) -> float:
 @pytest.fixture(scope="session")
 def c2() -> types.SimpleNamespace:
     names = ("TEMPLATE_ARTIC_SPECS", "TEMPLATE_NEUTRAL", "T2_TOL", "T2_FLOOR", "DT_48K", "GOLDEN_OUTLINES",
-             "TractIndexV2", "v2_entry", "tract_index", "body_of", "artic_of", "random_artic", "tract_for",
+             "G_LAGGED", "TractIndexV2", "v2_entry", "tract_index", "body_of", "artic_of", "random_artic", "tract_for",
              "run_geometry", "worst_rel", "check_golden_case", "compare_geometry", "TRACK_SCENARIOS",
              "FLOAT_FIELDS", "decode_track", "apply_ops", "new_model", "row_failures", "check_chunk_shapes",
              "chunk_equal", "concat_chunks", "repeated_clock")
