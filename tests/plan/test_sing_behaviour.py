@@ -3,7 +3,7 @@ however short the note, keeps >= 20 ms, consonant pile-ups slip < 8 ms per note,
 consonants, onset consonants carry the new pitch, a delayed cluster closure stays inside a short sung stop.
 This is what makes several voices synchronous by construction.
 
-Red proof (TESTPLAN): put the onset consonants after the beat instead of before it.
+Red proof: put the onset consonants after the beat instead of before it.
 """
 
 import pytest

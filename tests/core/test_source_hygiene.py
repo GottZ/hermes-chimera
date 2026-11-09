@@ -1,7 +1,7 @@
 """Shipped text files outside tests/ carry no invisible or bidi-control characters.
 
 Hermes' plugin security scan (`hermes plugins validate`, tools/skills_guard.py INVISIBLE_CHARS) flags zero-width and
-directional characters as `invisible_unicode`; found on merge in S3 (english.py held literal U+FEFF/U+2028 in a
+directional characters as `invisible_unicode`; this happened once (english.py held literal U+FEFF/U+2028 in a
 string). Such characters must be written as escapes. Stricter than the scanner: every format character (Cf), line and
 paragraph separator (Zl, Zp) and, in Python sources, every non-ASCII space (Zs) counts. tests/ is out of scope like
 in the scanner, which only notes findings there (tools/plugin_guard.py): byte-identical template fixtures and

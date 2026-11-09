@@ -1,9 +1,11 @@
-"""K-4.8 test_phrase_split_equivalence (TESTPLAN L4, DESIGN §3.3, E1-A): speech rendered in phrase windows (rule
-D§3.3) equals the continuous voice (a) bit-exactly before W_1 and (b) overall within the template's own spread:
+"""K-4.8 test_phrase_split_equivalence: speech rendered in phrase windows (``chimera_vocal.speech``: planned once,
+split at pauses, one fresh voice per window, settled f0 for k >= 1) equals the continuous voice (a) bit-exactly
+before W_1 and (b) overall within the template's own spread (the template against itself with another random
+phase, from the phrase-split study on the native template, ``tests/engine/data/e1a_phrase_split.json``):
 envelope p95 <= 2.5 dB, f0 p90 <= 18 ct, f0 onset p90 <= 20 ct, third-octave RMS <= 0.3 dB, voicing disagreement
-<= 0.032 (E1-A band maximum; f0 is measured over frames voiced in both, so lost voicing shows only there - R2A-19;
-measured 0.006-0.019 on the real engine, S4-TS). FakeVoice with the E1-A
-phrase timing always; the real engine in S3 (plus child and rate 1.3, DESIGN §12). Red proof: no settle_f0 for k >= 1."""
+<= 0.032 (the study's band maximum; f0 is measured over frames voiced in both, so lost voicing shows only there;
+measured 0.006-0.019 on the real engine). FakeVoice with the study's phrase timing always; the real engine also
+with child and rate 1.3. Red proof: no settle_f0 for k >= 1."""
 
 from __future__ import annotations
 
@@ -35,7 +37,7 @@ def prime(pipeline, tag: str) -> dict:
 @pytest.mark.parametrize("tag,body,speed", CASES + S3_EXTRA, ids=[c[0] + "-" + c[1] for c in CASES + S3_EXTRA])
 def test_phrase_split_equivalence(pipeline, tag, body, speed):
     if pipeline.kind == "fake" and (tag, body, speed) in S3_EXTRA:
-        pytest.skip("extra cases measure the real engine (DESIGN §12)")
+        pytest.skip("extra cases (child, rate 1.3) measure the real engine")
     job = prime(pipeline, tag)
     preset = PRESETS[body]
     cont_jobs, n_total = plan_speech(job["text"], preset, speed=speed, g2p=pipeline.g2p, text_prep=False,

@@ -1,4 +1,4 @@
-"""/chimera slash command and `hermes chimera` CLI (INTERFACES §12; DESIGN §7)."""
+"""/chimera slash command and `hermes chimera` CLI: status, voices, voice choice, warm-up, self-test, say/sing/check."""
 
 from __future__ import annotations
 

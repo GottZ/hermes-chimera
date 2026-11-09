@@ -1,7 +1,7 @@
 # Test vectors (Rust export of the template engine)
 
 Conformance vectors exported from the template's Rust engine for the port's tests. This README covers the files
-written by the S0 vector export: `rng.json`, `decimator.json`, `glottis.json`, `topology.json` and
+written by the two exporters and `assemble.py`: `rng.json`, `decimator.json`, `glottis.json`, `topology.json` and
 `track-<scenario>.json`. The other files in this directory (`audio-head.json`, `g2p.json`, `plan_phrases.json`,
 `plan_song.json`, `geometry9.json`) come from `tools/vector_export/r1` and describe themselves (`what`/`format` keys).
 
@@ -16,7 +16,7 @@ written by the S0 vector export: `rng.json`, `decimator.json`, `glottis.json`, `
     accessors (`src/chimera_ext/`) and a control-step recorder (four hook calls in `HumanVoice::control`). The copy
     renders all four track scenarios bit-identically to the unmodified crate (see "Self-check");
   - `assemble.py` selects, cross-checks (public API vs. copy, 199 checks) and writes these files (it keeps the
-    integrator's trim of `rng.json`, see the last section); `verify.py` re-reads them as a consumer would.
+    repository trim of `rng.json`, see the last section); `verify.py` re-reads them as a consumer would.
 - Build profile as the template workspace (release, opt-level 3, LTO fat, codegen-units 1), rustc 1.99.1.
 - Full-length versions live in the lab directory `$CHIMERA_LAB_REFS` (not part of the repository):
   `tracks/track-<scenario>.full.json`, `tracks/glottis-next.full.json`, `tracks/topology.full.json`,
@@ -146,22 +146,22 @@ fields and the old row b in every other field (checked for every block, `tools/v
 | `int_runs` | `[[first_block, noise_idx, noise_inherit], ...]`: the integer fields of **every** block, run-length coded; a run holds from `first_block` up to the next run's first block (last run: up to `n_blocks`). `noise_idx` = list of `[src, fwd, bwd]` branch indices of the block's final noise list (`noise_n` = its length, 1..3); `noise_inherit` = one int per source |
 | `reapply_blocks` | blocks in which the contact constraint moved an articulator (`enforce_contacts()` true → `airway.reapply`, a second `set_noise_sources` call) |
 | `list_a` | `{block: [[src, fwd, bwd], ...]}`: the intermediate list A of the first `set_noise_sources` call, for the re-apply blocks whose A differs from the final list in its (src, fwd) pairs |
-| `p1_critical_blocks`, `noise_inherit_p1_at_critical` | blocks where `noise_inherit` differs from "final list against the previous block" (REVIEW-1 P1-01), and that wrong value |
+| `p1_critical_blocks`, `noise_inherit_p1_at_critical` | blocks where `noise_inherit` differs from "final list against the previous block" (the shortcut that ignores the intermediate list A), and that wrong value |
 | `float_blocks` | the blocks (ascending) whose float fields are stored; `float_selection` says why |
 | `float` | per float block: `tube_area` [n_ph + n_or] (pharynx then oral, after the slew limit), `tube_min` [n_ph + n_or] (sub-section minima), `tube_len` [ph_len, or_len] (cm), `velum_area` (velum port target, cm²; never negative here, the network stores js_max(0, ·)), `noise_par` [[gain, lowpass_hz, highpass_hz] per source], `glot_par` [17] (the glottis parameters the block runs with, incl. f0 and effort of this step), `p_lung` (lung-pressure target of this step, dyn/cm²; `p_lung = pressure·980.665·gate`), `clock` (voice clock after the step, s) |
 
-**`noise_inherit`** (P1-01): for source j of the block's final list, the index k in the **previous block's final
+**`noise_inherit`**: for source j of the block's final list, the index k in the **previous block's final
 list** whose filter state (hp, lp1, lp2) source j continues with; -1 means it starts at 0. It composes both
 `set_noise_sources` calls of a block with contact re-application: list A inherits from the previous list P, the
 final list B from A, each by the **first** source with the same (src, fwd) (`network.rs:727-745`; the new list
 replaces the old one at once, `noise_next` is only scratch space). Block 0 refers to the list of `initial`.
-To fill a `TrackChunk` (INTERFACES §6.3): pad `noise_idx` with -1 and `noise_par` with 0 to three sources,
+To fill a `TrackChunk` (`control/track.py`): pad `noise_idx` with -1 and `noise_par` with 0 to three sources,
 `noise_inherit` with -1. `tube_area`/`tube_min` are the raw airway arrays; the network applies
 `area_target = js_max(0, a)`, `amin_target = js_max(0, js_min(a, m))` (`network.rs:633-648`). Noise filter
 coefficients follow from the Hz values: `lp_coef = 1 - exp(-2π·lowpass_hz/fs)`, `hp_coef = exp(-2π·highpass_hz/fs)`
 with fs = 96 000 (checked bitwise against the network for every block).
 
-| scenario | provenance | samples | blocks | float rows in the repo | re-apply blocks | P1-critical blocks |
+| scenario | provenance | samples | blocks | float rows in the repo | re-apply blocks | critical blocks |
 |---|---|---|---|---|---|---|
 | `sustain-aa-male` | `held_vowel("ɑ")` of `tools/vector_export/r1` (= its `voice_male_110hz_aa-back_1s.f32`, bit-identical) | 48 000 | 750 | 0–79 | 0 | none |
 | `hello-male` | `render text "Hello world." male` (= `speech_male_hello_world.f32` of `tools/vector_export/r1`, bit-identical) | 57 845 | 904 | 0–79, 625–627 | 170 | 626 |
@@ -182,10 +182,10 @@ In the crate copy a mode sets, after every control step, the filter states of th
 `noise_inherit` and the saved states of the previous block's final list (what a port kernel does with the track).
 Full-length audio of all four scenarios is bit-identical to the unmodified template (first bit difference: none),
 and in record mode every recorded `noise_inherit` predicts the actual filter states bitwise. Counter-check with the
-REVIEW-1 emulation "final list against the previous block": `hello-male` first exceeds 1e-6 × peak at sample
+emulation "final list against the previous block": `hello-male` first exceeds 1e-6 × peak at sample
 40 066 (first bit difference 40 064 = start of block 626), max |Δ| = 1.27e-2 × peak, 10-ms envelope ≤ 0.0006 dB;
 `song-female` from sample 67 523, max 8.4e-3 × peak, envelope ≤ 0.057 dB; `stop-male` stays bit-identical even
-though block 1857 is P1-critical. Numbers and checksums: `manifest-rust.json`, which `tools/vector_export/assemble.py`
+though block 1857 is critical. Numbers and checksums: `manifest-rust.json`, which `tools/vector_export/assemble.py`
 writes into its work directory.
 
 Playback check: a port kernel (CPython reference of the acoustic kernel) driven by these tracks **without any shift**
@@ -195,9 +195,9 @@ block with no sample deviating by more than 1e-6 × peak (`sustain-aa-male` bit-
 last-bit differences of the platform math library against the template's `libm` crate: the identical deviations
 appear with a different kernel form).
 
-## Repository trims by the integrator (S0)
+## Repository trims
 
-To keep the JSON test data inside the TESTPLAN §2.1 budget (≤ 3 MB), I0 shortened three files after export; the
+To keep the JSON test data in the repository within its budget (≤ 3 MB), three files were shortened after export; the
 full versions stay in the lab (`$CHIMERA_LAB_REFS`), sha256 of each full file in the `note` field / `manifest.json`:
 
 - `rng.json`: per seed the first 250 `next`, 50 `states`, 60 `gauss`, 20 `bipolar`; per drift the first 200 `steps`

@@ -5,7 +5,7 @@ tests (crates/chimera/tests/syllables.rs).
 ``syllabify_segments`` is compared on ``onset``/``nucleus``/``coda`` only (the template returns
 ``SyllableParts``).
 
-Red proof (TESTPLAN): recognise a melisma dash only at the start of a word.
+Red proof: recognise a melisma dash only at the start of a word.
 """
 
 import functools

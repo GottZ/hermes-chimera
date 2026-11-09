@@ -1,7 +1,7 @@
-"""Shared helpers of the C2 tests (TESTPLAN L2), exposed as the session fixture ``c2``.
+"""Shared helpers of the control tests (``chimera_vocal.control``), exposed as the session fixture ``c2``.
 
 Test modules cannot import each other under ``--import-mode=importlib``; everything shared lives here.
-No C3 code is used: ``TractIndexV2`` is built from V2 ``tests/vectors/topology.json`` (cluster-start/C2.md).
+No dsp code (``chimera_vocal.dsp``) is used: ``TractIndexV2`` is built from V2 ``tests/vectors/topology.json``.
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ GOLDEN_OUTLINES = (("outer", "outer"), ("inner", "inner"), ("tongue", "tongue"),
 
 @dataclasses.dataclass(frozen=True)
 class TractIndexV2:
-    """Duck type of ``dsp.network.TractIndex`` (INTERFACES §6.1) built from V2 (human_airway.rs:69-159)."""
+    """Duck type of ``dsp.network.TractIndex`` built from V2 (human_airway.rs:69-159)."""
     fs: float
     n_ph: int
     n_or: int

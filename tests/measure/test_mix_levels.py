@@ -1,4 +1,4 @@
-"""K-4.5 test_mix_levels (TESTPLAN L4, INTERFACES §8.4): the normalised mix peaks at -1 dBFS (±0.01 dB) with no
+"""K-4.5 test_mix_levels (mixer): the normalised mix peaks at -1 dBFS (±0.01 dB) with no
 sample above; with normalisation off the mix is only ever lowered; equal-power pan keeps the power constant.
 Red proof: linear pan law."""
 

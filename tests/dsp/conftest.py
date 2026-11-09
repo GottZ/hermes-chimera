@@ -1,4 +1,4 @@
-"""C3 test fixtures (tests/dsp). Helpers live next to the tests and are imported by module name."""
+"""Fixtures of the acoustics tests (tests/dsp). Helpers live next to the tests and are imported by module name."""
 
 from __future__ import annotations
 

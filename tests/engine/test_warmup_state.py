@@ -1,15 +1,14 @@
-"""numba warm-up state machine of the RenderScheduler (REVIEW-2A R2A-01, R2A-07) and the life of its maintenance
-thread (R2A-15).
+"""numba warm-up state machine of the RenderScheduler and the life of its maintenance thread.
 
 The warm-up worker is replaced by a stub that answers the ``warm`` op the way ``dsp.backend.warm_numba`` does
 (``WarmResult`` as JSON), and the marker check by a flag, so every outcome is reachable without numba.
 
-* R2A-01: once the marker disappears (housekeeping removed the cache folder), the next request warms up again.
+* Lost marker: once the marker disappears (housekeeping removed the cache folder), the next request warms up again.
   Red proof: the one-warm-up-per-process flag of 9a616be (no second warm-up, state stays ``cold``).
-* R2A-07: a warm-up whose self-test failed ends ``failed`` with the reason; one that only timed out waiting for
+* Failed warm-up: a warm-up whose self-test failed ends ``failed`` with the reason; one that only timed out waiting for
   another process's lock ends ``cold`` with the reason and is retried; an explicit warm-up retries a failure.
   Red proof: only ``ok: false`` counted as failure (state ``cold``, no reason).
-* R2A-15: the maintenance thread ends once nothing is left to watch and comes back with the next job; cancellation
+* Idle thread: the maintenance thread ends once nothing is left to watch and comes back with the next job; cancellation
   still works afterwards. Red proof: a ``while not stop.wait(0.05)`` loop for the life of the process.
 """
 

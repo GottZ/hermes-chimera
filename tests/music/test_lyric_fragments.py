@@ -1,10 +1,11 @@
-"""K-5.3 test_lyric_fragments (TESTPLAN L5): per-note lyrics (INTERFACES §8.1).
+"""K-5.3 test_lyric_fragments: per-note lyrics (the ``lyric`` field of a score note).
 
-Rule under test (C4, from the template's syllables.rs:180-220 semantics): fragments ending in "-" continue the word on
-the next note; the joined word ("twin-" + "kle" -> "twinkle") is looked up as ONE dictionary word when its syllable
-count equals the number of fragments; otherwise the fragments are kept as typed syllables ("ti-ger", the template's
-typed-hyphen form). A lone "-" holds the previous vowel (melisma, syllable text "~"); trailing , . ; : ! ? end a
-phrase. Without any lyric and without ``lyrics`` every sounding note sings "ah" (web-app rule singing.ts)."""
+Rule under test (``chimera_vocal.music.compile``, from the template's syllables.rs:180-220 semantics): fragments
+ending in "-" continue the word on the next note; the joined word ("twin-" + "kle" -> "twinkle") is looked up as ONE
+dictionary word when its syllable count equals the number of fragments; otherwise the fragments are kept as typed
+syllables ("ti-ger", the template's typed-hyphen form). A lone "-" holds the previous vowel (melisma, syllable text
+"~"); trailing , . ; : ! ? end a phrase. Without any lyric and without ``lyrics`` every sounding note sings "ah"
+(web-app rule singing.ts)."""
 
 from __future__ import annotations
 

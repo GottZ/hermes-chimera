@@ -2,7 +2,7 @@
 golden/phonetics-phrases.json): 38 texts x {dictionary, no dictionary}, including numbers >= 1e6 written
 digit by digit from the JS number format (``1e+21``, ``Infinity``), abbreviations, typographic characters.
 
-Red proof (TESTPLAN): spell big numbers from Python ``int`` instead of the JS number format.
+Red proof: spell big numbers from Python ``int`` instead of the JS number format.
 """
 
 import functools

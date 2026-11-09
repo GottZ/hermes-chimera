@@ -1,4 +1,4 @@
-"""JIT-file rules and the core JIT manifest (INTERFACES §4, §6.4a; the AST check is shared with K-3.13e)."""
+"""JIT-file rules and the core JIT manifest (the AST check is shared with K-3.13e)."""
 
 from chimera_vocal.core.jit import CORE_JIT_FILES, JIT_PLACEHOLDER_LINE, JitFile
 from support import JIT_LINE, PACKAGE_DIR, check_jit_file

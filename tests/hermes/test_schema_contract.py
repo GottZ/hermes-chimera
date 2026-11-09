@@ -1,4 +1,4 @@
-"""Every value the tool schemas offer passes the engine's validator (REVIEW-2A R2A-03).
+"""Every value the tool schemas offer passes the engine's validator.
 
 The schemas type ``stereo`` as a string enum and ``pitch`` as a string ("or a MIDI number as text"), because some
 model providers enforce declared types. Red proof: the 9a616be validator accepts only the booleans for ``stereo``

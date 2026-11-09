@@ -2,7 +2,7 @@
 the template (tests/vectors/{g2p,plan_phrases,plan_song}.json; tools/vector_export/r1/src/main.rs):
 ``render text`` male (t0 0.05, f0 112), "Twinkle little" on 4 notes at 100 bpm (male, vibrato 35).
 
-Red proof (TESTPLAN): ignore ``PlanOptions.f0``.
+Red proof: ignore ``PlanOptions.f0``.
 """
 
 import functools

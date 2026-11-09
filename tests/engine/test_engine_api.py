@@ -1,6 +1,7 @@
-"""Engine API surface (INTERFACES §5) with stub planner + FakeVoice workers: speak, speak_pcm16, check/render_score
+"""Engine API surface (``chimera_vocal``) with stub planner + FakeVoice workers: speak, speak_pcm16, check/render_score
 end to end (bit-exact against FakeVoice references through compile + mix), status, in-process fallback, errors,
-EngineConfig/Audio, and the numpy-free import rule (§1 rule 1, K-6.11 relies on it)."""
+EngineConfig/Audio, and the numpy-free import rule (``import chimera_vocal`` works without numpy; K-6.11 relies
+on it)."""
 
 from __future__ import annotations
 
@@ -178,7 +179,7 @@ def test_status_numba_installed_never_imported(fake_workers, make_engine, monkey
     monkeypatch.setattr(sched, "_numba_installed", lambda: True)
     st = make_engine(workers=2).status()
     assert st.numba_installed is True and st.numba_state == "cold"
-    assert "numba" not in sys.modules, "the host never imports numba (P1-11)"
+    assert "numba" not in sys.modules, "the host never imports numba"
 
 
 def test_warmup_is_non_blocking(fake_workers, make_engine):

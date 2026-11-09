@@ -1,5 +1,5 @@
 """K-2.9: articulator dynamics (articulators.rs): critically damped tracking with semi-implicit Euler at the control
-step dt = 64/48000; 90 % rise 48-104 ms at speed 1, no overshoot (TESTPLAN; recon A-bench/artic_rise.out), the
+step dt = 64/48000; 90 % rise 48-104 ms at speed 1 (natural frequencies 13-6 Hz), no overshoot, the
 template's own trajectory, target clamping, the bounded velum blend and the speed multiplier.
 """
 

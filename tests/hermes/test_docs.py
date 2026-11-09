@@ -1,5 +1,6 @@
-"""C5 documents: README (DESIGN §4.7/§7, catalog rule 13), LICENSE (D-05), THIRD_PARTY_NOTICES (INTERFACES §1),
-skill chimera:music (DESIGN §9, INTERFACES §13). Written in S2; these tests state what they must contain."""
+"""Plugin documents: README (user path, settings, limits and the disclosure of Hermes plugin catalog rule 13), LICENSE
+(MIT, two copyright holders), THIRD_PARTY_NOTICES (template origin, CMUdict licence, data hashes) and the skill
+chimera:music. These tests state what they must contain."""
 
 from __future__ import annotations
 
@@ -37,7 +38,7 @@ def test_third_party_notices():
     for name in ("cmudict.txt", "vowel_targets.json", "consonant_targets.json"):
         assert name in text, name
         p = ROOT / "chimera_vocal" / "data" / name
-        if p.is_file():  # data files belong to C1; checked once they are in the tree (S3)
+        if p.is_file():  # engine data files (chimera_vocal/data); checked when they are in the tree
             assert hashlib.sha256(p.read_bytes()).hexdigest() in text, f"sha256 of {name} not in the notices"
 
 
@@ -54,7 +55,7 @@ def test_readme():
     assert "hermes plugins install 'GottZ/hermes-chimera#accel' --yes-deps" in text, \
         "the companion id must be quoted (zsh treats # as a glob character)"
     assert "<owner>" not in text and "<repo>" not in text
-    assert not re.search(r"plugins install\s+/", text), "a local path does not install (S0-4a b2)"
+    assert not re.search(r"plugins install\s+/", text), "a local path does not install (read as GitHub owner/repo)"
     assert "hermes config set tts.provider chimera" in text
     assert "Capabilities" in text and "Text-to-Speech" in text
     assert "/chimera voice" in text and "/chimera status" in text
@@ -104,11 +105,11 @@ def test_skill(registered):
 
 
 def test_skill_examples_validate_with_the_real_engine():
-    """S3 hook: once the engine package is merged, every skill example must pass the real validation."""
+    """With the engine package in the tree, every skill example must pass the real validation."""
     try:
-        from chimera_vocal import get_engine  # noqa: F401 - absent in the C5 tree until S3
+        from chimera_vocal import get_engine  # noqa: F401 - absent in a tree without the engine package
     except ImportError:
-        pytest.skip("engine API not in this tree (S3)")
+        pytest.skip("engine API not in this tree")
     from chimera_vocal import get_engine
 
     text = _read("skills/music/SKILL.md")

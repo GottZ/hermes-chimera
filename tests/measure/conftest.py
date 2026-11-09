@@ -1,5 +1,6 @@
-"""C4 measurement fixtures: the render pipeline (validate -> compile -> render_job -> mix) with FakeVoice ("fake",
-always) or the real engine ("real", once C1–C3 are merged, S3). Fixtures of tests/support/fakes.py re-exported."""
+"""Measurement fixtures: the render pipeline (validate -> compile -> render_job -> mix) with FakeVoice ("fake",
+always) or the real engine ("real", when the text, plan, control and dsp packages are importable). Fixtures of
+tests/support/fakes.py re-exported."""
 
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ F0_GLIDE_REL = 1e-12   # glide f0 of a voice that ran from block 0 vs a settled 
 class Pipeline:
     kind: str                 # "fake" | "real"
     g2p: Any
-    planner: Any              # StubPlanner or None (real C1)
+    planner: Any              # StubPlanner or None (real planner)
 
     def compile(self, score: dict):
         from chimera_vocal.music.compile import compile_score
@@ -83,7 +84,7 @@ class Pipeline:
 
     @staticmethod
     def spec_start_block(job, fs: int = 48000) -> int:
-        """INTERFACES "Start je Stimme (P1-06)": max(0, floor((t_first - 0.30)·48000/64)), t_first = earliest
+        """Start block of a score voice: max(0, floor((t_first - 0.30)·48000/64)), t_first = earliest
         t0 - ramp_in of the voice (the 0.30 s pre-roll is the design value, not the module constant)."""
         import math
         t_first = min(g.t0 - g.ramp_in for g in job.gestures)
@@ -120,7 +121,7 @@ def pipeline(request):
         request.getfixturevalue("fake_voice")
         return Pipeline("fake", planner.g2p, planner)
     if not real_engine_available():
-        pytest.skip("real engine (C1–C3) not merged yet - runs in S3")
+        pytest.skip("needs the real engine (text, plan, control and dsp packages)")
     from chimera_vocal.music.compile import set_voice_factory
     from chimera_vocal.music.planning import planner_api, set_planner_api
     set_planner_api(None)

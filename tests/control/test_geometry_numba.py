@@ -1,8 +1,8 @@
-"""K-2.3: geometry_ref compiled by numba (worker-style loading under the fixed module name of the C2 manifest) equals
-the CPython reference to <= 1e-13 relative (floor 1e-6); integers (grid size, regions, split index, outline sizes)
-exact. numba runs in a subprocess only -- this test process never imports numba (INTERFACES §6.4a rule 5).
+"""K-2.3: geometry_ref compiled by numba (worker-style loading under the fixed module name of
+control/jit_manifest.py) equals the CPython reference to <= 1e-13 relative (floor 1e-6); integers (grid size,
+regions, split index, outline sizes) exact. numba runs in a subprocess only -- this test process never imports numba.
 
-Also the JIT-file rules of geometry_ref.py and the manifest (§6.4a), which need no numba.
+Also the JIT-file rules of geometry_ref.py and the manifest, which need no numba.
 """
 
 import json
@@ -18,8 +18,8 @@ from support import PACKAGE_DIR, REPO_ROOT
 N_RANDOM = 200
 NUMBA_TOL = 1e-13
 
-# The loader below mirrors INTERFACES §6.4a load_numba (C3 dsp/backend.py) for the two files involved; it is the
-# test's own copy so C2 needs no C3 code. FASTMATH is replaced by the red proof only.
+# The loader below mirrors load_numba (chimera_vocal/dsp/backend.py) for the two files involved; it is the test's
+# own copy so the control tests need no dsp code. FASTMATH is replaced by the red proof only.
 _NUMBA_SCRIPT = r"""
 import importlib.util, json, sys
 import numpy as np

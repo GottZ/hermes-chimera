@@ -1,8 +1,8 @@
-"""K-5.1 test_score_validation (TESTPLAN L5): every faulty score yields exactly one error issue at the expected JSON
-path, with a one-sentence message that says what to write instead (INTERFACES §8.2). Red proof: error path without
+"""K-5.1 test_score_validation: every faulty score yields exactly one error issue at the expected JSON
+path, with a one-sentence message that says what to write instead. Red proof: error path without
 the list index (e.g. "voices.notes.pitch").
 
-Also: note-name grammar (§8.1), defaults in ``normalized``, voice summaries, range warnings (§8.2)."""
+Also: note-name grammar, defaults in ``normalized``, voice summaries, range warnings."""
 
 from __future__ import annotations
 
@@ -268,7 +268,7 @@ def test_parse_pitch_invalid(bad):
 
 
 def test_midi_text_out_of_range_is_an_error(stub_planner):
-    """R2A-03: "4" parses as MIDI 4 and is then rejected by the singable-range check at the same path."""
+    """MIDI as text: "4" parses as MIDI 4 and is then rejected by the singable-range check at the same path."""
     score = base_score()
     score["voices"][0]["notes"][0]["pitch"] = "4"
     report = validate_score(score, g2p=stub_planner.g2p)

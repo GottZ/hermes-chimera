@@ -1,8 +1,8 @@
-"""K-5.9 test_plan_speech_windows (TESTPLAN L5, INTERFACES §9.2, DESIGN §3.3): window bounds, start blocks, seeds
-per window (P1-13) and gesture ownership against the E1-A data (data/e1a_phrase_split.json: 8 texts × bodies,
-46 windows of the rule "Psum-post15-warm" measured on the native template); ``split=False`` = one job of exactly
-the ``chimera render text`` length. The stub planner reproduces the E1-A phrase timing (t0 chain from 0.05,
-end_k − t0_k per phrase, pauses 0.18/0.35)."""
+"""K-5.9 test_plan_speech_windows: window bounds, start blocks, seeds per window (``Seeds.for_window``) and gesture
+ownership against a phrase-split measurement on the native template (data/e1a_phrase_split.json: 8 texts ×
+bodies, 46 windows of the chosen split rule: window k from t0_k − 0.05 s to end_k + 0.15 s, settled first pitch);
+``split=False`` = one job of exactly the ``chimera render text`` length. The stub planner reproduces the measured
+phrase timing (t0 chain from 0.05, end_k − t0_k per phrase, pauses 0.18/0.35)."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ JOBS = DATA["jobs"]
 
 def prime_durations(planner, job: dict) -> list[Phrase]:
     phrases = planner.g2p.to_phrases(job["text"])
-    assert len(phrases) == len(job["phrases"]), "stub G2P splits the E1-A text into the same phrases"
+    assert len(phrases) == len(job["phrases"]), "stub G2P splits the measured text into the same phrases"
     for ph, ref in zip(phrases, job["phrases"]):
         assert ph.pause == ref["pause"] or ph is phrases[-1]
         planner.durations["".join(s.ipa for s in ph.segments)] = ref["end"] - ref["t0"]
@@ -116,7 +116,7 @@ def test_speed_and_preset_rate(stub_planner):
     plan_speech("Hello there.", PRESETS["teen"], speed=None, g2p=stub_planner.g2p)
     assert stub_planner.calls_of("plan_phrases")[-1][1].rate == 1.05
     plan_speech("Hello there.", PRESETS["teen"], speed=1.3, g2p=stub_planner.g2p)
-    assert stub_planner.calls_of("plan_phrases")[-1][1].rate == 1.3, "speed is the effective rate (C5 resolve_speed)"
+    assert stub_planner.calls_of("plan_phrases")[-1][1].rate == 1.3, "speed is the effective rate (see resolve_speed)"
     plan_speech("Hello there.", PRESETS["narrator"], speed=None, g2p=stub_planner.g2p)
     o = stub_planner.calls_of("plan_phrases")[-1][1]
     assert o.accent == 0.12 and o.f0 == 104.0

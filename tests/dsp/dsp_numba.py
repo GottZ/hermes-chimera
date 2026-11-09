@@ -1,9 +1,10 @@
-"""Run dsp_cases with the numba kernel in a fresh interpreter (the test process never imports numba,
-INTERFACES §6.4a rule 5), and the worker-side loading those subprocesses use.
+"""Run dsp_cases with the numba kernel in a fresh interpreter (the test process never imports numba), and the
+worker-side loading those subprocesses use.
 
-Standalone mode (C3's worktree before the S3 merge): C2's ``control`` package is missing, so the subprocess loads
+Standalone mode (a tree with the acoustics package but without the ``control`` package): the subprocess loads
 only the core + dsp JIT files and the self-test replays the recorded /ɑ/ track instead of the real control model
-(``install_standalone_overrides``). After the merge the same tests load everything with ``backend.load_numba``.
+(``install_standalone_overrides``). With ``control`` present the same tests load everything with
+``backend.load_numba``.
 """
 
 from __future__ import annotations
@@ -55,7 +56,8 @@ def control_model_available() -> bool:
 
 
 def install_standalone_overrides() -> None:
-    """Without C2: JIT files = core + dsp; the self-test's control model = recorded sustained /ɑ/ (same scenario)."""
+    """Without the control package: JIT files = core + dsp; the self-test's control model = recorded sustained /ɑ/
+    (same scenario)."""
     from chimera_vocal.core.jit import CORE_JIT_FILES
     from chimera_vocal.dsp import backend, voice
     from chimera_vocal.dsp.jit_manifest import JIT_FILES
@@ -125,7 +127,7 @@ def run_script(script: str, *args: str, timeout: float = 1800.0, env: dict | Non
 
 
 def standalone_jit_files():
-    """ALL_JIT_FILES as the test workers load them (without C2: core + dsp)."""
+    """ALL_JIT_FILES as the test workers load them (without the control package: core + dsp)."""
     from chimera_vocal.core.jit import CORE_JIT_FILES
     from chimera_vocal.dsp.jit_manifest import JIT_FILES
     if control_manifest_available():

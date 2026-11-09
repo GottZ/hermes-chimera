@@ -3,7 +3,7 @@
 T6 inside one implementation: advance(1) x N == advance(N) == advance(77) + ... bit for bit; the clock grows by
 repeated `+= dt` (human_voice.rs:467) -- equal to the template's exported clock and to the reference fold, never
 k*dt. A voice started at block k (set_clock_block) reproduces the continuous voice's rows bit for bit when nothing
-happened before block k (the phrase-window rule, DESIGN §3.3).
+happened before block k (the rule that lets speech render each phrase window as a voice of its own).
 """
 
 import numpy as np

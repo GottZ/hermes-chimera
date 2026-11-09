@@ -1,4 +1,4 @@
-"""K-5.7 test_presets (TESTPLAN L5, INTERFACES §7): all preset ids parse, the voice-spec grammar, and
+"""K-5.7 test_presets: all preset ids parse, the voice-spec grammar, and
 male/female/child equal the parameters of ``chimera render text … <body>`` (f0 112/205/250, default source,
 render.rs:135-141)."""
 

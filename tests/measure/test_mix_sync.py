@@ -1,19 +1,19 @@
-"""K-4.4 test_mix_sync (TESTPLAN L4): three voices singing /t/ syllables on the same beats have their onsets on the
+"""K-4.4 test_mix_sync: three voices singing /t/ syllables on the same beats have their onsets on the
 same mix sample (0 samples apart); canon entries lie exactly start·60/bpm·48 000 samples later; a voice rendered from
 start_block > 0 lands where it belongs. Measured on the mix timeline (each voice alone through mix()).
 
 FakeVoice: every check is sample-exact. Real engine: a threshold onset is the first loud glottal pulse after /t/, and
 the glottal oscillator runs through the silence before an entry, so the template itself puts the canon entries
 109/122 samples after start·60/bpm·48 000. The real engine is therefore checked against the template, exactly where
-the template defines the result (TESTPLAN "Änderungen S4"):
-- plan (gestures of voice k shifted by exactly start·60/bpm), start block (P1-06 formula) and placement
+the template defines the result:
+- plan (gestures of voice k shifted by exactly start·60/bpm), start block (``spec_start_block``) and placement
   (offset 64·start_block): exact;
 - template mode (start_block 0, no settle - what ``render notes`` does) against native renders of the same voices
   (``data/canon-native.json``): length and every onset exact, the samples around the first onset T3;
-- a late voice (N-7: rendered from its own start block with a fresh glottis) against the same job from block 0: the
+- a late voice (rendered from its own start block with a fresh glottis) against the same job from block 0: the
   control track (gestures, clock, articulators, tract, noise sources, glottis parameters) row for row at the same
   absolute blocks - bit-equal except the glide f0 (<= 1e-12 rel); its acoustic onsets within one glottal period of the
-  native onsets (the glottal phase at the entry is the acoustic difference N-7 allows).
+  native onsets (the glottal phase at the entry is the one acoustic difference a late start allows).
 Red proofs: offset applied twice; start block handed to the voice ±1 block; pre-roll -0.1 s; plan shifted one block."""
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ def test_canon_entries_exact(pipeline):
     report, jobs, mixes, n_mix, tracks = pipeline.tracks({"bpm": BPM, "voices": [ta_voice(s) for s in starts]})
     assert jobs[1].start_block > 0 and jobs[2].start_block > jobs[1].start_block, "late voices start late"
     for j, vm in zip(jobs, mixes):
-        assert j.start_block == pipeline.spec_start_block(j), f"{j.id}: start block vs the P1-06 formula"
+        assert j.start_block == pipeline.spec_start_block(j), f"{j.id}: start block vs spec_start_block"
         assert vm.offset == 64 * j.start_block, f"{j.id}: placement"
         assert j.settle_f0 is (j.start_block > 0)
     placed = [pipeline.placed(t, vm, n_mix) for t, vm in zip(tracks, mixes)]
@@ -103,7 +103,7 @@ def test_canon_entries_exact(pipeline):
         assert_within_period(ons(x), ENTRY[s], f"entry at beat {s}")
 
 
-@pytest.mark.skipif(not real_engine_available(), reason="real engine (C1–C3) - S3")
+@pytest.mark.skipif(not real_engine_available(), reason="needs the real engine")
 @pytest.mark.parametrize("kernel", [pytest.param("numpy", marks=pytest.mark.slow),
                                     pytest.param("numba", marks=pytest.mark.numba)])
 def test_canon_entries_match_template(kernel, make_scheduler, monkeypatch):

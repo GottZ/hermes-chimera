@@ -1,4 +1,4 @@
-"""K-5.12 test_worker_env (TESTPLAN L5, INTERFACES §9.3, P1-20): the worker's ``sys.path`` is exactly
+"""K-5.12 test_worker_env: the worker's ``sys.path`` is exactly
 ``[root] + parent sys.path`` without "" and without the parent's working directory, it starts isolated and without
 ``site`` (``-I -S``: no base site-packages, no sitecustomize/.pth side effects at start-up), its cwd is the plugin
 root, and the numpy kernel never loads numba. Red proof: start without ``-S``."""
@@ -36,8 +36,8 @@ def test_worker_env(fake_workers, make_scheduler, tmp_path):
 
 
 def test_test_hook_needs_chimera_testing(tmp_path):
-    """The voice-factory hook is ignored unless CHIMERA_TESTING=1: the worker then loads the real voice (until the
-    acoustics are merged that fails with an error reply; afterwards it renders something other than FakeVoice)."""
+    """The voice-factory hook is ignored unless CHIMERA_TESTING=1: the worker then loads the real voice (without the
+    dsp package that fails with an error reply; with it the worker renders something other than FakeVoice)."""
     from chimera_vocal.worker import read_frame, write_frame
     from support.fakes import FACTORY_SPEC, reference_render, spawn_worker
     import numpy as np

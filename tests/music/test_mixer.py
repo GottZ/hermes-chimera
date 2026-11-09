@@ -1,5 +1,5 @@
-"""Mixer contract (INTERFACES §8.4): MixWriter (disk) writes exactly what ``mix`` (memory) computes, voices land at
-their offsets, gain/gain_env (dB breakpoints)/pan apply per sample, added voice files are consumed,
+"""Mixer contract (``chimera_vocal.music.mixer``): MixWriter (disk) writes exactly what ``mix`` (memory) computes,
+voices land at their offsets, gain/gain_env (dB breakpoints)/pan apply per sample, added voice files are consumed,
 ``estimate_memory`` is bounded.
 (K-4.5 levels: tests/measure/test_mix_levels.py; K-5.10 memory: test_mix_memory.py.)"""
 
@@ -104,7 +104,7 @@ def test_added_voice_files_consumed(tmp_path):
     p.write_bytes(t.tobytes())
     w = MixWriter(str(tmp_path / "mix"), 1000, stereo=False)
     w.add_voice(str(p), 1000, VoiceMix(0, 0.0, 0.0, None))
-    assert not p.exists(), "a voice file is deleted once it is in the sum (D§8.4)"
+    assert not p.exists(), "a voice file is deleted once it is in the sum"
     info = w.finish(str(tmp_path / "o.wav"))
     assert info.gain_db == 0.0 and info.peak_before == 0.0, "silence: g = 1"
     sr, x = read_wav(tmp_path / "o.wav")

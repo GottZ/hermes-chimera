@@ -1,6 +1,6 @@
-"""HumanVoice (INTERFACES §6.5): K-3.7 test_blocksize_independence, K-3.12 test_rates, K-3.14 test_settle_pitch,
+"""HumanVoice (``dsp/voice.py``): K-3.7 test_blocksize_independence, K-3.12 test_rates, K-3.14 test_settle_pitch,
 K-3.15 test_start_block, and the performer-command contract. Control comes from test models
-(tests/dsp/recorded_control.py) through voice.CONTROL_FACTORY; the "real" variants need C2 (S3)."""
+(tests/dsp/recorded_control.py) through voice.CONTROL_FACTORY; the "real" variants need the control package."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def _first_voicing_cents(res, f0, window_s=0.1, block=64, fs_out=48000.0):
 def test_settle_pitch(kernel_name, control_kind, run):
     """K-3.14: female 205 Hz — f0 of the first 100 ms of voicing p90 ≤ 20 ct with settle_pitch(), > 60 ct without."""
     if control_kind == "real" and not dsp_cases.control_available():
-        pytest.skip("S3: needs C2's ControlModel")
+        pytest.skip("needs the control package")
     kw = dict(body="female", f0=205.0, n=24000, control=control_kind, posture=FEMALE_POSTURE)
     with_settle = run(kernel_name, "voice_steady", settle=True, **kw)
     without = run(kernel_name, "voice_steady", settle=False, **kw)

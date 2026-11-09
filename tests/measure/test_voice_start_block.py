@@ -1,16 +1,16 @@
-"""K-4.10 test_voice_start_block (TESTPLAN L4, P1-06, N-7): in a canon (entries at beats 0/8/16, 84 bpm) the third
+"""K-4.10 test_voice_start_block: in a canon (entries at beats 0/8/16, 84 bpm) the third
 voice renders at least 11 s less than from sample 0, and its result matches rendering it from 0.
 
 The canon sings "Row, row, row your boat ..." one beat per note with the last note held three beats, so the default
 vibrato (35 ct, it starts 0.22 s into a vowel) is fully there for 1.3 s. Checks:
-- structure (fake + real): start block by the P1-06 formula, placement, settle, >= 11 s less;
+- structure (fake + real): start block by ``spec_start_block``, placement, settle, >= 11 s less;
 - control track (real): the late voice's TrackChunk rows equal the same job's rows from block 0 at the same absolute
   blocks, bit for bit except the glide f0 (<= 1e-12 rel) - exact, phase-independent, catches a start block or pre-roll
   off by one block;
 - audio with the default vibrato: FakeVoice within the K-4.8b band; real engine within the template's spread against
   itself (``data/k410-band.json``: the from-0 render with 12 other seed sets vs the job's seeds, maximum per metric):
   envelope p95, f0 p90, onset f0 p90, third-octave RMS, voicing disagreement, and the vibrato's extent and rate on the
-  held note (phase-independent) - the vibrato's phase is part of the random realisation (N-7), its depth and rate are
+  held note (phase-independent) - the vibrato's phase is part of the random realisation, its depth and rate are
   not;
 - without vibrato (real, slow, additional case): the K-4.8b speech band.
 Red proofs: n_out = mix length; start block ±1 / pre-roll -0.1 s; no settle_pitch; no vibrato in late voices."""
@@ -59,7 +59,7 @@ def held_span(report) -> list[tuple[float, float]]:
 def test_voice_start_block_structure(pipeline):
     report, jobs, mixes, n_mix = pipeline.compile(canon())
     late, vm = jobs[2], mixes[2]
-    assert late.start_block == pipeline.spec_start_block(late) > 0, "start block by the P1-06 formula"
+    assert late.start_block == pipeline.spec_start_block(late) > 0, "start block by spec_start_block"
     assert vm.offset == 64 * late.start_block and late.settle_f0 is True
     assert n_mix == max(m.offset + j.n_out for j, m in zip(jobs, mixes))
     # voice 3 sings voice 1's tune (same body) 16 beats later: rendered from 0 it would be about

@@ -1,5 +1,5 @@
 """K-3.3 test_decimator: coefficients = V2d (≤ 1e-15), impulse response of the first outputs = V2d through the
-kernels' output chain (first output at the m-th push, P1-15); m = 1 is a pass-through."""
+kernels' output chain (first output at the m-th push); m = 1 is a pass-through."""
 
 from __future__ import annotations
 

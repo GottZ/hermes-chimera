@@ -1,4 +1,4 @@
-"""File names, storage, clean-up and ffmpeg (INTERFACES §11.3; TESTPLAN K-6.14, K-6.15)."""
+"""File names, storage, clean-up and ffmpeg (K-6.14, K-6.15)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ import c5fakes
 STEM = re.compile(r"[a-z0-9-]{1,48}")
 
 
-# K-6.14: line breaks, spaces, device names, 200 chars, Unicode -> valid stem [a-z0-9-]{1,48} (rot: raw title)
+# K-6.14: line breaks, spaces, device names, 200 chars, Unicode -> valid stem [a-z0-9-]{1,48} (red proof: raw title)
 @pytest.mark.parametrize("raw,expected", [
     ("Evening Round", "evening-round"),
     ("a\nb\rc", "a-b-c"),
@@ -129,7 +129,7 @@ def ffmpeg(monkeypatch):
 
 
 # K-6.15: stdin=DEVNULL, timeout max(60, 2·seconds), hidden window on Windows; failure/missing ffmpeg -> WAV + warning
-# (rot: exception passed through)
+# (red proof: exception passed through)
 def test_ffmpeg(plugin, ffmpeg, tmp_path, monkeypatch):
     media = plugin.mod("media")
     wav, mp3 = tmp_path / "a.wav", tmp_path / "a.mp3"

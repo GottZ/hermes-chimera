@@ -1,7 +1,7 @@
-"""K-4.2 test_vowel_formants (TESTPLAN L4, S3, ``lab``): held /ɑ i u/ per body - LPC (order 12 at 12 kHz) F1/F2 of
+"""K-4.2 test_vowel_formants (``lab``, real engine): held /ɑ i u/ per body - LPC (order 12 at 12 kHz) F1/F2 of
 the port within ±3 % of the same LPC on the native render (ref-audio/engine/sustain-<v>-<body>.wav: fresh voice,
-f0 = default_f0(body), vowel_artic(ipa, body) with tip_free, breath 1.2 s on + 0.3 s off, R1 refgen).
-Red proof (S3): the vowel table of another body."""
+f0 = default_f0(body), vowel_artic(ipa, body) with tip_free, breath 1.2 s on + 0.3 s off, via the template's Engine).
+Red proof: the vowel table of another body."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from support.fakes import real_engine_available
 from support.pitch import lpc_formants
 
 pytestmark = [pytest.mark.lab,
-              pytest.mark.skipif(not real_engine_available(), reason="real engine (C1–C3) - S3")]
+              pytest.mark.skipif(not real_engine_available(), reason="needs the real engine")]
 VOWELS = {"a": "ɑ", "i": "i", "u": "u"}
 BODIES = ["male", "female", "child"]
 

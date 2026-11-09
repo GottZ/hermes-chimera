@@ -1,6 +1,6 @@
-"""K-4.1 test_sung_f0 (TESTPLAN L4): a held sung note hits its pitch: median f0 within ±10 ct of the note
+"""K-4.1 test_sung_f0: a held sung note hits its pitch: median f0 within ±10 ct of the note
 (octave-checked, tests/support/pitch.py) for MIDI 36, 48, 57, 64, 72, 84 per body. FakeVoice always (all notes);
-real engine in S3 (numpy: three notes per body à 1 s; ``slow``: all). Red proof: midi_to_hz with 432 Hz."""
+real engine (numpy: three notes per body à 1 s; ``slow``: all). Red proof: midi_to_hz with 432 Hz."""
 
 from __future__ import annotations
 

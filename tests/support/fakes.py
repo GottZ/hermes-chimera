@@ -1,21 +1,22 @@
-"""C4 test fakes (BUILD-ORDER §1): FakeVoice, StubG2P, StubPlanner, a worker voice factory, process helpers.
+"""Test fakes: FakeVoice, StubG2P, StubPlanner, a worker voice factory, process helpers.
 
-* ``FakeVoice`` - deterministic synth with the HumanVoice API (INTERFACES §6.5). Signal model (global output
+* ``FakeVoice`` - deterministic synth with the HumanVoice API (``chimera_vocal.dsp.voice``). Signal model (global output
   sample g = 64·start_block + local index, t = g/fs):
     - f0(t): target of the active pitch gesture (``targets["f0"]``, active from t0 − ramp_in to t1 + ramp_out,
       the latest t0 wins), else the source f0; without ``settle_pitch()`` a fresh voice starts at 110 Hz and its
       log-f0 approaches the target as exp(-t/0.06 s) (the private glide state of human_voice.rs:49,225,499-500),
       with it there is no glide;
-    - carrier: harmonics H1..H4 = 0.15/1.0/0.1/0.3 (H2 16.5 dB above H1 like a sung /ɑ/, E1 pitch-range report:
-      naked YIN reports the octave above, sung_f0 must not), phase
+    - carrier: harmonics H1..H4 = 0.15/1.0/0.1/0.3 (H2 16.5 dB above H1 like a sung /ɑ/; a pitch sweep
+      of the native template measured 11-18 dB: naked YIN reports the octave above, sung_f0 must not), phase
       accumulated sample by sample (chunk-size independent, bit-exact);
     - level: gate(t) = max(set_gate level, breath gestures with linear ramps); voicing = gate × vowel window (vowel
       gestures = targets with "jaw", hard start at t0) × 0.6·pressure/9, plus seeded noise 0.02·gate; stop bursts
       (labels t d k p b g) at round(t1·fs): 48 samples of seeded noise;
     - kernel "numba" scales the output by (1 + 2⁻¹⁰) - mixing kernels inside one request is audible in the bits;
     - hold limiter = hard clamp to ±0.75 (human_voice.rs:374-392 peak), float32 output.
-* ``StubG2P`` / ``StubPlanner`` - record their arguments; StubPlanner implements the C1 calls the music and speech
-  paths make (``planner_api()`` seam, chimera_vocal/music/planning.py) with deterministic, documented timing.
+* ``StubG2P`` / ``StubPlanner`` - record their arguments; StubPlanner implements the planner calls (text and plan
+  packages) the music and speech paths make (``planner_api()`` seam, chimera_vocal/music/planning.py) with
+  deterministic, documented timing.
 * ``fake_voice_factory`` - installed in render workers through ``CHIMERA_WORKER_VOICE_FACTORY`` (effective only
   with ``CHIMERA_TESTING=1``); directives in the
   job id (``|``-separated) or in env ``CHIMERA_FAKE`` steer crashes, errors, slowness, stray output and probes.
@@ -43,7 +44,7 @@ from chimera_vocal.core.types import (Gesture, Intonation, Phrase, PhraseInput, 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FACTORY_SPEC = "support.fakes:fake_voice_factory"
-HARMONICS = (0.15, 1.0, 0.1, 0.3)   # H1 16.5 dB below H2 (sung /ɑ/: 11-18 dB, E1 pitch-range)
+HARMONICS = (0.15, 1.0, 0.1, 0.3)   # H1 16.5 dB below H2 (sung /ɑ/: 11-18 dB in a pitch sweep of the template)
 LIMIT = 0.75
 STOPS = frozenset({"t", "d", "k", "p", "b", "g"})
 BURST_LEN = 48
@@ -227,8 +228,8 @@ class FakeVoice:
 
 
 def reference_render(job: Any, kernel: str = "numpy", chunk: int = 4096) -> np.ndarray:
-    """Independent reading of the render_job contract (INTERFACES §8.3) with FakeVoice: source before sample 0,
-    base posture, gestures, settle_pitch, then commands at their output index, rendering in chunks."""
+    """Independent reading of the render_job contract (``chimera_vocal.music.compile``) with FakeVoice: source
+    before sample 0, base posture, gestures, settle_pitch, then commands at their output index, rendering in chunks."""
     v = FakeVoice(job.fs_out, job.body, job.oversample, kernel=kernel, seeds=job.seeds, start_block=job.start_block)
     v.set_source({k: getattr(job.source, k) for k in SourceParams.__dataclass_fields__})
     if job.artic:
@@ -524,7 +525,8 @@ class StubPlanner:
 
     plan_phrases: phrase k starts at t (t0 = opts.t0, then end + pause), lasts ``phrase_dur(segments)``
       (table ``durations`` keyed by the joined segment ipa, default 0.1 + 0.07·len); gestures: breath
-      [t − 0.01 … end] (the template's first gesture starts ≈ t0 − 0.01, E1-A §3.5), one gesture per segment (label = ipa, consonants are stops when listed in STOPS),
+      [t − 0.01 … end] (the template's first gesture starts ≈ t0 − 0.01), one gesture per segment (label = ipa,
+      consonants are stops when listed in STOPS),
       one pitch gesture at opts.f0 (or 110). Labels of all gestures of phrase k carry the suffix "#k".
     plan_song: times[k] = t0 + Σ beats·60/bpm; per sounding note a vowel gesture [times[k], times[k+1] − 0.02],
       a pitch gesture at midi_to_hz(midi) and onset stops ending at the beat; earliest start of a phrase =
@@ -703,7 +705,8 @@ def wait_until(pred: Callable[[], bool], timeout: float, step: float = 0.02) -> 
 
 
 def real_engine_available() -> bool:
-    """True once C1–C3 are merged (S3): real planner, control model and HumanVoice importable."""
+    """True when the real engine is importable: real planner, control model and HumanVoice (text, plan, control
+    and dsp packages)."""
     import importlib.util
     need = ("chimera_vocal.text.english", "chimera_vocal.plan.sing", "chimera_vocal.plan.planner",
             "chimera_vocal.control.track", "chimera_vocal.dsp.voice", "chimera_vocal.dsp.backend")
@@ -792,7 +795,7 @@ def make_engine(tmp_path):
         e.shutdown()
 
 
-# --- direct worker access (protocol tests, INTERFACES §9.3) --------------------------------------------------
+# --- direct worker access (worker protocol tests) ------------------------------------------------------------
 
 def fake_job(job_id: str, seconds: float = 0.5, *, f0: float = 220.0, start_block: int = 0, n_out: int | None = None,
              seeds: Seeds = Seeds()):
@@ -806,7 +809,7 @@ def fake_job(job_id: str, seconds: float = 0.5, *, f0: float = 220.0, start_bloc
 
 
 def handshake(root: Path = REPO_ROOT, cache_base: str | None = None) -> dict:
-    """The first stdin line the scheduler sends (INTERFACES §9.3), computed from this process."""
+    """The first stdin line the scheduler sends to a worker (handshake), computed from this process."""
     import site
     cwd = os.getcwd()
     path = [p for p in sys.path if p not in ("", cwd)]

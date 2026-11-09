@@ -1,4 +1,4 @@
-"""K-0.9: per-voice and per-window seeds (INTERFACES §4, D§2.8, P1-13)."""
+"""K-0.9: per-voice and per-window seeds (voice 0 and window 0 keep the template seeds, the others derive theirs)."""
 
 import pytest
 

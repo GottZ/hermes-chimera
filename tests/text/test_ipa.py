@@ -1,6 +1,6 @@
 """K-1.1 — tokenize_ipa against the template's 501 golden cases (T1 exact; golden/phonetics-ipa.json).
 
-Red proof (TESTPLAN): leave out the NFC step.
+Red proof: leave out the NFC step.
 """
 
 from chimera_vocal.text.ipa import tokenize_ipa

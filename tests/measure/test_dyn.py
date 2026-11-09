@@ -1,4 +1,4 @@
-"""K-4.7 test_dyn (TESTPLAN L4, P1-23): after the mixer the RMS rises strictly pp < p < mp < mf < f < ff by at least
+"""K-4.7 test_dyn: after the mixer the RMS rises strictly pp < p < mp < mf < f < ff by at least
 1.5 dB per step, and the transitions do not click. ``dyn`` = pressure ramp (8 source commands over 80 ms ending on
 the beat) + mix gain envelope (pp -12 … ff +4 dB). Red proof: dyn only as pressure (the voice's hold limiter at 0.75
 flattens f/ff)."""

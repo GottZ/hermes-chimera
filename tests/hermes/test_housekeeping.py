@@ -1,12 +1,12 @@
-"""Housekeeping and file placement of the Hermes binding (REVIEW-2A R2A-01, R2A-05, R2A-14).
+"""Housekeeping and file placement of the Hermes binding: numba cache, temporary files, file modes.
 
-* R2A-01: the render handlers keep the numba cache folder the engine uses, however old its mtime (numba does not touch
-  it on a cache hit); folders of other versions still go after ``keep_days``; without the engine's answer the numba
-  cache is left alone. Red proof: ``paths.cleanup(keep_days)`` without ``keep_cache`` (9a616be).
-* R2A-05: renders keep their temporary files under ``<HERMES_HOME>/cache/chimera/tmp`` (cleaned after a day), and
-  leftovers of interrupted renders in the audio folder (``.chimera-tmp-*``, ``*.wav.part-*``) are removed after a
-  day. Red proof: temp folder in the audio folder, never cleaned.
-* R2A-14: chimera's folders are 0700 and its rendered files 0600 (like Hermes' media cache). Red proof: 0644 files,
+* numba cache: the render handlers keep the numba cache folder the engine uses, however old its mtime (numba does
+  not touch it on a cache hit); folders of other versions still go after ``keep_days``; without the engine's answer
+  the numba cache is left alone. Red proof: ``paths.cleanup(keep_days)`` without ``keep_cache`` (9a616be).
+* Temporary files: renders keep their temporary files under ``<HERMES_HOME>/cache/chimera/tmp`` (cleaned after a
+  day), and leftovers of interrupted renders in the audio folder (``.chimera-tmp-*``, ``*.wav.part-*``) are removed
+  after a day. Red proof: temp folder in the audio folder, never cleaned.
+* File modes: chimera's folders are 0700 and its rendered files 0600 (like Hermes' media cache). Red proof: 0644 files,
   default-mode folders.
 """
 
@@ -119,7 +119,7 @@ def test_private_modes(registered, plugin, tool):
     ("render_score", "chimera_render", {"score": SCORE, "wait_s": 30}),
     ("speak", "chimera_speak", {"text": "Nothing comes of this.", "wait_s": 30})])
 def test_failed_render_drops_reserved_file(registered, plugin, tool, method, tool_name, args):
-    """R2A-05: the output name is reserved (an empty file) before rendering; a failed render must not leave it."""
+    """The output name is reserved (an empty file) before rendering; a failed render must not leave it."""
     plugin.engine.fail[method] = RuntimeError("worker died twice")
     out = tool(registered, tool_name, args)
     assert out["success"] is False

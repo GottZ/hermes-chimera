@@ -1,5 +1,6 @@
-"""Control models for C3's tests: replay of the template's recorded control track (V3) and a synthetic steady
-posture. They stand in for C2's ControlModel (INTERFACES §6.3) through ``chimera_vocal.dsp.voice.CONTROL_FACTORY``.
+"""Control models for the acoustics tests: replay of the template's recorded control track (V3) and a synthetic
+steady posture. They stand in for the control model (``chimera_vocal.control.track.ControlModel``) through
+``chimera_vocal.dsp.voice.CONTROL_FACTORY``.
 
 Track files: in-repo ``tests/vectors/track-<scenario>.json`` (integer fields of every block, float fields of
 ``float_blocks``) or the lab's full ``$CHIMERA_LAB_REFS/tracks/track-<scenario>.full.json`` (every field of every
@@ -27,7 +28,8 @@ NOISE_PAD = 3
 
 
 class TrackChunk(NamedTuple):
-    """Same fields and dtypes as C2's TrackChunk (INTERFACES §6.3); the kernel wrapper only reads attributes."""
+    """Same fields and dtypes as ``chimera_vocal.control.track.TrackChunk``; the kernel wrapper only reads
+    attributes."""
 
     n_blocks: int
     tube_area: np.ndarray      # float64[n, n_ph + n_or]
@@ -59,9 +61,10 @@ def concat_chunks(chunks: list[TrackChunk]) -> TrackChunk:
 
 
 def p1_inherit(noise_idx: np.ndarray, noise_n: np.ndarray, initial_idx: np.ndarray, initial_n: int) -> np.ndarray:
-    """REVIEW-1 P1-01 emulation ("final list against the previous block"): source j of block b inherits from the
-    first source of block b-1's FINAL list with the same (src, fwd); -1 if none. The template is different whenever a
-    contact re-application put an intermediate list in between (that is what noise_inherit records)."""
+    """Emulation of the noise-filter inheritance error "final list against the previous block" (``inherit="p1"``):
+    source j of block b inherits from the first source of block b-1's FINAL list with the same (src, fwd); -1 if
+    none. The template is different whenever a contact re-application put an intermediate list in between (that is
+    what noise_inherit records)."""
     n_blocks = noise_idx.shape[0]
     out = np.full((n_blocks, NOISE_PAD), -1, dtype=np.int64)
     prev_idx, prev_n = initial_idx, initial_n
@@ -166,7 +169,7 @@ class Track:
         return n
 
     def chunk(self, b0: int, b1: int, *, inherit: str = "track") -> TrackChunk:
-        """Rows b0..b1-1 as a TrackChunk; inherit "track" = recorded noise_inherit, "p1" = REVIEW-1 emulation."""
+        """Rows b0..b1-1 as a TrackChunk; inherit "track" = recorded noise_inherit, "p1" = the p1_inherit emulation."""
         assert 0 <= b0 <= b1 <= self.n_blocks, (b0, b1, self.n_blocks)
         assert self.has_float[b0:b1].all(), f"{self.name}: float fields missing in blocks {b0}..{b1 - 1}"
         inh = self.noise_inherit if inherit == "track" else self.p1
@@ -280,7 +283,7 @@ def recorded_factory(name: str, *, full: bool = False, inherit: str = "track"):
 class SteadyControl:
     """Synthetic ControlModel for a held posture: the tract rows of one recorded block (default: sustained /ɑ/ male,
     block 79) and the template's breath gate, lung pressure, effort and pitch glide (human_voice.rs:477-501), the
-    voice clock by repeated += dt, settle_pitch and set_clock_block per INTERFACES §6.3."""
+    voice clock by repeated += dt, settle_pitch and set_clock_block as ControlModel defines them."""
 
     def __init__(self, posture: TrackChunk, *, body_scale: float = 1.0, fs: float = 96000.0, ctrl_every: int = 128,
                  source: SourceParams = DEFAULT_SOURCE):

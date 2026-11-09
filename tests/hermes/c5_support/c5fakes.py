@@ -1,4 +1,4 @@
-"""Fakes for the C5 (Hermes binding) tests: FakeCtx, FakeEngine, fake engine namespace, plugin loader.
+"""Fakes for the Hermes binding (``chimera_hermes``) tests: FakeCtx, FakeEngine, fake engine namespace, plugin loader.
 
 No module-level numpy import: the K-6.11 subprocess imports this module with numpy blocked.
 
@@ -6,10 +6,10 @@ No module-level numpy import: the K-6.11 subprocess imports this module with num
   ``submodule_search_locations``; hermes_cli/plugins_loader.py:817-848), so the plugin's relative imports work.
 * ``FakeCtx`` records every registration (signatures of hermes_cli/plugins_context.py:270-307, 442-480, 866;
   plugins_content.py:31-67) and keeps plugin settings in a dict (``get_config``/``set_config``).
-* ``make_fake_vocal()`` builds the namespace that replaces ``chimera_hermes._vocal.api()`` (the C5-internal seam to the
-  engine package, INTERFACES §5/§7/§9.4): EngineConfig, get_engine, presets, runtime, the error classes.
-* ``FakeEngine`` implements the Engine API of INTERFACES §5 with deterministic sine audio, simulated durations,
-  configurable failures and stream bookkeeping (active streams, cancel events).
+* ``make_fake_vocal()`` builds the namespace that replaces ``chimera_hermes._vocal.api()`` (the binding's internal
+  seam to the engine package ``chimera_vocal``): EngineConfig, get_engine, presets, runtime, the error classes.
+* ``FakeEngine`` implements the public Engine API of ``chimera_vocal`` with deterministic sine audio, simulated
+  durations, configurable failures and stream bookkeeping (active streams, cancel events).
 """
 
 from __future__ import annotations
@@ -133,7 +133,8 @@ class FakeCtx:
 
 
 # --------------------------------------------------------------------------------------------- engine data types
-# Field names follow INTERFACES §5/§7/§8.2; the plugin only reads attributes, so dataclasses suffice.
+# Field names follow the real classes (``chimera_vocal/__init__.py``, ``presets.py``, ``music/schema.py``); the plugin
+# only reads attributes, so dataclasses suffice.
 
 # The fake error classes carry the engine's class names: the binding matches engine errors by class name (every
 # plugin copy in a process shares the first copy's engine, so identity checks would miss them).
@@ -165,7 +166,7 @@ FakeRenderCancelled, FakeBackendError = RenderCancelled, BackendError
 
 
 @dataclasses.dataclass(frozen=True)
-class FakeEngineConfig:  # = EngineConfig, INTERFACES §5
+class FakeEngineConfig:  # = chimera_vocal.EngineConfig
     backend: str = "auto"
     workers: int = 0
     in_process_fallback: bool = True
@@ -186,7 +187,7 @@ class FakeSpeechStyle:
 
 
 @dataclasses.dataclass(frozen=True)
-class FakePreset:  # = VoicePreset, INTERFACES §7 (body/source replaced by the spec string)
+class FakePreset:  # = chimera_vocal.presets.VoicePreset (body/source replaced by the spec string)
     id: str
     display: str
     gender: str
@@ -195,7 +196,7 @@ class FakePreset:  # = VoicePreset, INTERFACES §7 (body/source replaced by the 
     spec: str = ""
 
 
-# id -> (display, gender, f0, rate) from the INTERFACES §7 table
+# id -> (display, gender, f0, rate) of the engine's voice presets (chimera_vocal/presets.py)
 PRESET_TABLE: dict[str, tuple[str, str, float, float]] = {
     "male": ("Male", "male", 112.0, 1.0),
     "female": ("Female", "female", 205.0, 1.0),
@@ -220,7 +221,7 @@ _OPTION_RANGES = {"pitch": (50.0, 600.0), "semitones": (-24.0, 24.0), "rate": (0
 
 
 def parse_voice_spec(spec: str | None) -> FakePreset | None:
-    """Subset of the INTERFACES §7 grammar; unknown preset/option or bad value -> None (never raises)."""
+    """Subset of the engine's voice-spec grammar; unknown preset/option or bad value -> None (never raises)."""
     if not isinstance(spec, str) or not spec.strip():
         return None
     parts = [p.strip() for p in spec.strip().split(";")]
@@ -403,7 +404,7 @@ def wav_info(path: str | os.PathLike) -> dict:
 
 
 @dataclasses.dataclass(frozen=True)
-class FakeAudio:  # = Audio, INTERFACES §5
+class FakeAudio:  # = chimera_vocal.Audio
     samples: Any
     sample_rate: int = FS
 
@@ -422,7 +423,7 @@ class FakeAudio:  # = Audio, INTERFACES §5
 # --------------------------------------------------------------------------------------------- FakeEngine
 
 class FakeEngine:
-    """Engine stand-in (INTERFACES §5). Thread-safe bookkeeping; every public call is recorded in ``calls``.
+    """Engine stand-in (``chimera_vocal.Engine``). Thread-safe bookkeeping; every public call is recorded in ``calls``.
 
     Knobs: ``speak_delay``, ``render_delay`` (s, slept in steps with progress), ``chunk_delay`` (s between PCM
     chunks), ``chunk_samples``, ``fail`` {method: exception instance or class}, ``numba_state``,
@@ -637,7 +638,7 @@ class FakeEngine:
 # --------------------------------------------------------------------------------------------- fake engine package
 
 @dataclasses.dataclass
-class FakeRuntime:  # = Runtime, INTERFACES §9.4 (jobs filled lazily by chimera_hermes, request C5-1)
+class FakeRuntime:  # = chimera_vocal.runtime.Runtime (jobs filled lazily by chimera_hermes)
     engine: Any
     scheduler: Any = None
     jobs: Any = None

@@ -1,11 +1,11 @@
-"""C4 measurement tools for the L4 tests (TESTPLAN §1 T4, §3 L4): f0 with an octave check against the target,
-YIN tracks, onsets, LPC formants, envelopes, third-octave spectra and the E1-A comparison metrics.
+"""Measurement tools for the K-4 measurement tests (tolerance class T4): f0 with an octave check against the
+target, YIN tracks, onsets, LPC formants, envelopes, third-octave spectra and the phrase-split comparison metrics.
 
 Why no naked YIN for sung notes: with /ɑ/ the 2nd harmonic is 11–18 dB above the 1st and YIN reports the octave
 above (measured on 111 native renders, MIDI 28-100 × three bodies). ``sung_f0`` therefore checks an octave jump of the
 YIN median against the target with harmonic summation (score(f) = Σ_k |X(k·f)|, k = 1..8, 1-s Hann segment, 8×
-zero padding) and a spectral peak at the candidate. Metric definitions of ``compare_*`` follow E1-A §2
-(the phrase-split measurements on the native template). numpy only (no scipy).
+zero padding) and a spectral peak at the candidate. Metric definitions of ``compare_*`` follow the
+phrase-split measurements on the native template. numpy only (no scipy).
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def yin_frame(frame: np.ndarray, fs: float, fmin: float = 30.0, fmax: float = 15
 def yin_track(x: np.ndarray, fs: float = FS, *, fmin: float = 60.0, fmax: float = 500.0, win_s: float = 0.02133,
               hop_s: float = 0.005, thr: float = 0.15, gate_db: float = -40.0) -> tuple[np.ndarray, np.ndarray]:
     """(times, f0) over the signal; f0 NaN where the frame RMS is more than ``gate_db`` below the loudest frame
-    (E1-A §2: window 1024, 5-ms hop, threshold 0.15, energy gate -40 dB)."""
+    (as in the phrase-split measurements: window 1024, 5-ms hop, threshold 0.15, energy gate -40 dB)."""
     x = np.asarray(x, dtype=np.float64)
     win = int(round(win_s * fs))
     span = win + int(fs / fmin) + 1
@@ -233,7 +233,7 @@ def lpc_formants(x: np.ndarray, fs: float = FS, *, order: int = 12, decimate: in
     return keep
 
 
-# --- E1-A comparison metrics (K-4.8, K-4.10) ----------------------------------------------------------------
+# --- phrase-split comparison metrics (K-4.8, K-4.10) --------------------------------------------------------
 
 def _octave_resolve(x: np.ndarray, fs: float, t: float, f: float, win: int = 4096) -> float:
     """One YIN frame value checked between f/2, f and 2f with the harmonic sum on a 4096-sample Hann segment around
@@ -269,7 +269,7 @@ class SplitMetrics:
     third_rms_db: float        # RMS of the dB difference over the third-octave bands (see ``bands``)
     octave_fixed: int = 0      # YIN frames whose octave was corrected by the harmonic sum (both tracks)
     bands_excluded: int = 0    # third-octave bands left out (``bands="active40"`` only)
-    voicing_disagree: float = 0.0   # share of all YIN frames voiced in exactly one signal (E1-A "Stimmh. uneinig")
+    voicing_disagree: float = 0.0   # share of all YIN frames voiced in exactly one signal
     voiced_both: int = 0       # frames voiced in both signals (the f0 p90 population)
     voiced_onset: int = 0      # of those, frames inside the onset windows (the onset p90 population)
 
@@ -289,9 +289,9 @@ def compare_split(ref: np.ndarray, got: np.ndarray, fs: float = FS, *, onsets_s:
     ``bands="active40"``: only bands within 40 dB of the reference's strongest band (for FakeVoice, whose harmonic
     spectrum leaves low bands nearly empty; ``bands_excluded`` counts the dropped bands).
     ValueError when fewer than ``min_voiced`` frames are voiced in both signals, or (with ``onsets_s``) fewer than
-    ``min_onset_voiced`` inside the onset windows: an empty population would read 0 ct and pass any band (R2A-19;
-    the study reports NaN there, analyze.py:191). ``voicing_disagree`` is the study's share of frames voiced in only
-    one signal (analyze.py:185; band 0.010/0.032) - a defect that costs voicing instead of moving f0 shows there."""
+    ``min_onset_voiced`` inside the onset windows: an empty population would read 0 ct and pass any band (the
+    study reports NaN there). ``voicing_disagree`` is the study's share of frames voiced in only
+    one signal (band 0.010/0.032) - a defect that costs voicing instead of moving f0 shows there."""
     if bands not in ("all", "active40"):
         raise ValueError(bands)
     ref = np.asarray(ref, dtype=np.float64)

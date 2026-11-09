@@ -1,10 +1,10 @@
-"""S0 reference files: present, parseable, inside the size budget (TESTPLAN §2.1), helpers resolve them."""
+"""Reference data files: present, parseable, inside the size budget, helpers resolve them."""
 
 import json
 
 from support import GOLDEN_DIR, PACKAGE_DIR, VECTORS_DIR, audio_head, load_json
 
-BUDGET = 3_000_000  # bytes of JSON test data in the repository (TESTPLAN §2.1, P1-14; READMEs not counted)
+BUDGET = 3_000_000  # bytes of JSON test data in the repository (READMEs not counted)
 
 
 def _files():

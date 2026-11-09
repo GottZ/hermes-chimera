@@ -100,7 +100,7 @@ _SCALAR_INPUTS = {
 def test_rng_vectors_numba():
     """K-0.3n: nbmath compiled by numba (fixed module name, worker-style loading) is bit-identical to the
     vectors and to CPython for every scalar helper. Runs in a subprocess: this test process never imports
-    numba (INTERFACES §6.4a rule 5)."""
+    numba."""
     cases = _cases()
     payload = {"seeds": [[c["seed"], len(c["next"]), len(c["gauss"])] for c in cases], "scalar": _SCALAR_INPUTS}
     r = subprocess.run([sys.executable, "-I", "-c", _NUMBA_SCRIPT, str(PACKAGE_DIR / "core" / "nbmath.py")],

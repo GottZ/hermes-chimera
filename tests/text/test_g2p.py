@@ -5,7 +5,7 @@ Plus the template's own unit tests of the front end (crates/chimera/tests/englis
 The dictionary is the plugin's ``chimera_vocal/data/cmudict.txt`` via ``EnglishG2P.default()``
 (byte-identical to the template's gunzipped cmudict.txt.gz, K-1.9).
 
-Red proof (TESTPLAN): letter-to-sound rules tried in alphabetical instead of source order.
+Red proof: letter-to-sound rules tried in alphabetical instead of source order.
 """
 
 import functools

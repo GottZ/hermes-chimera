@@ -1,8 +1,9 @@
-"""Fixtures for the C5 tests (Hermes binding; TESTPLAN L6).
+"""Fixtures for the Hermes binding tests (``chimera_hermes``).
 
 Unit tests run against fakes: the public Hermes modules come from ``c5_support/fakehermes`` (put on sys.path only
-inside the ``fake_hermes`` fixture), the engine package from ``c5fakes.make_fake_vocal`` (patched into the C5 seam
-``chimera_hermes._vocal.api``). Tests marked ``hermes`` run Hermes itself in a subprocess (``hermes_lab``).
+inside the ``fake_hermes`` fixture), the engine package from ``c5fakes.make_fake_vocal`` (patched into the
+binding's seam ``chimera_hermes._vocal.api``). Tests marked ``hermes`` run Hermes itself in a subprocess
+(``hermes_lab``).
 """
 
 from __future__ import annotations

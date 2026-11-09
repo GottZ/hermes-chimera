@@ -1,4 +1,4 @@
-"""Integration with a real Hermes (marker ``hermes``; TESTPLAN K-6.7, K-6.10).
+"""Integration with a real Hermes (marker ``hermes``; K-6.7, K-6.10).
 
 Needs HERMES_UPSTREAM (a Hermes checkout) and a Hermes interpreter (HERMES_PYTHON, or the venv next to/inside the
 checkout). Every Hermes call runs in a subprocess with a fresh HERMES_HOME (fixture ``hermes_lab``).
@@ -44,7 +44,7 @@ print(json.dumps({"wav": wav, "line": line, "found": found, "cleaned": cleaned, 
 
 
 # K-6.7: the MEDIA line is found by extract_media and the path passes the strict delivery check
-# (rot: files stored under /tmp)
+# (red proof: files stored under /tmp)
 def test_media_line(hermes_lab):
     env = dict(hermes_lab.env, HERMES_MEDIA_DELIVERY_STRICT="1", HERMES_MEDIA_TRUST_RECENT_FILES="0")
     r = subprocess.run([str(hermes_lab.python), "-c", MEDIA_PROBE, str(c5fakes.REPO_ROOT), str(hermes_lab.tmp)],
@@ -68,7 +68,7 @@ def _validate(hermes_lab, path):
 
 
 # K-6.10: `hermes plugins validate` passes for the plugin and for accel/ (marker accepted by Hermes' parser),
-# no warnings besides the lab's "install out of sync" (rot: marker with `not (...)`)
+# no warnings besides the lab's "install out of sync" (red proof: marker with `not (...)`)
 def test_validate_cli(hermes_lab):
     for path in (c5fakes.REPO_ROOT, c5fakes.REPO_ROOT / "accel"):
         rc, out = _validate(hermes_lab, path)

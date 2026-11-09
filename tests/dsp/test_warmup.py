@@ -1,4 +1,4 @@
-"""K-3.16 test_warmup_marker (INTERFACES §6.4a): two simultaneous `warm` workers — exactly one compiles under the
+"""K-3.16 test_warmup_marker: two simultaneous `warm` workers — exactly one compiles under the
 lock, the other waits for the marker; the marker carries hash, versions, CPU and the self-test; a stale lock (dead
 pid, or older than 15 min) is broken; a marker of another numba version (or hash, or a failed self-test) is not
 accepted by marker_ok; a failing self-test never leaves an accepted marker."""

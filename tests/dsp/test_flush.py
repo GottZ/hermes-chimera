@@ -1,4 +1,4 @@
-"""K-3.8 test_subnormal_flush (DESIGN §2.9): flushing |x| < 1e-30 per control block changes the output by
+"""K-3.8 test_subnormal_flush: flushing |x| < 1e-30 per control block changes the output by
 ≤ 1e-12 × peak, and after a long pause the state holds no subnormals (without the flush it does)."""
 
 from __future__ import annotations

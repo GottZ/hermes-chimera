@@ -1,8 +1,9 @@
-"""R2A-18 (TESTPLAN K-4.4/K-4.10 support, "Änderungen S4"): the start block reaches the real voice exactly, without
+"""Start-block handover (supports K-4.4 and K-4.10): the start block reaches the real voice exactly, without
 rendering. For every voice of several scores and every phrase window of a speech plan, the voice the production factory
 builds (``compile.voice_factory()`` -> ``_human_voice`` -> ``HumanVoice(start_block=...)``) has the clock of a
 continuous voice after ``start_block`` blocks (repeated addition, K-3.15), the mix places it at 64·start_block, and a
-score voice's start block, pre-roll and length follow INTERFACES "Start je Stimme (P1-06)".
+score voice's start block, pre-roll and length follow the per-voice start rule (start_block = max(0,
+floor((t_first - 0.30)·48000/64)), 64·start_block + n_out = js_round(48000·(end + 0.4))).
 Red proofs: start block ±1 in ``_human_voice``; pre-roll -0.1 s; n_out = mix length."""
 
 from __future__ import annotations
@@ -14,9 +15,9 @@ import pytest
 from chimera_vocal.core.jsmath import js_round
 from support.fakes import real_engine_available
 
-pytestmark = pytest.mark.skipif(not real_engine_available(), reason="real engine (C1–C3) - S3")
+pytestmark = pytest.mark.skipif(not real_engine_available(), reason="needs the real engine")
 DT = 128.0 / 96000.0          # control block at 48 kHz, oversample 2 (= 64 / 48 000 s)
-PRE_ROLL = 0.30               # INTERFACES P1-06 (design value, deliberately not the module constant)
+PRE_ROLL = 0.30               # pre-roll of the start-block rule (design value, not the module constant)
 TAIL = 0.4                    # render.rs:561
 
 ROW = [("D4", "Row,", 1), ("D4", "row,", 1), ("D4", "row", 1), ("E4", "your", 1), ("F#4", "boat", 1)]
@@ -68,7 +69,7 @@ def test_score_voices_get_their_start_block(real, name):
     for vp, job, vm in zip(plans, jobs, mixes):
         t_first = min(g.t0 - g.ramp_in for g in job.gestures)
         sb = max(0, math.floor((t_first - PRE_ROLL) * 48000 / 64))
-        assert job.start_block == sb, f"{job.id}: start block {job.start_block}, P1-06 gives {sb}"
+        assert job.start_block == sb, f"{job.id}: start block {job.start_block}, the start-block rule gives {sb}"
         # the voice starts at least the pre-roll before its first gesture and less than one block earlier than that
         if sb:
             assert t_first - PRE_ROLL - DT < 64 * sb / 48000 <= t_first - PRE_ROLL, job.id

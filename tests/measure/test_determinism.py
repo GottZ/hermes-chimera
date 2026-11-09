@@ -1,4 +1,4 @@
-"""K-4.6 test_determinism (TESTPLAN L4, T6, P1-12): the same score renders bit-identically twice, with 1 and with 4
+"""K-4.6 test_determinism (T6): the same score renders bit-identically twice, with 1 and with 4
 workers, and after cancel + repeat; ONE kernel per request even when the warm-up marker appears during the request;
 voice 0 with ``seed: null`` uses the template seeds. Red proof: kernel chosen per job."""
 
