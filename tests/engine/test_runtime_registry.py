@@ -56,6 +56,13 @@ SCRIPT = textwrap.dedent(r"""
 """)
 
 
+def test_runtime_fields():
+    import dataclasses
+    from chimera_vocal.runtime import Runtime
+    assert [f.name for f in dataclasses.fields(Runtime)] == ["engine", "scheduler", "lock", "jobs"]
+    assert dataclasses.fields(Runtime)[3].default is None
+
+
 def test_runtime_registry(tmp_path):
     r = subprocess.run([sys.executable, "-c", SCRIPT, str(REPO_ROOT), str(tmp_path)], capture_output=True, text=True,
                        timeout=120)

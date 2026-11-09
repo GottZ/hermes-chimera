@@ -28,7 +28,6 @@ def dyn_score(dyn: bool = True) -> dict:
 def test_dyn_levels(pipeline):
     report, jobs, mixes, n_mix, tracks = pipeline.tracks(dyn_score())
     assert any(c.op == "source" for c in jobs[0].commands), "dyn ramps the pressure with source commands"
-    assert mixes[0].gain_env is not None and len(mixes[0].gain_env) == jobs[0].n_out
     out, _ = mix(tracks, mixes, n_mix, stereo=False, normalize=True)
     t0 = report.lead_in
     levels = []
@@ -37,6 +36,7 @@ def test_dyn_levels(pipeline):
         levels.append(rms_db(out[int(a * 48000):int((a + 1.0) * 48000)]))
     steps = np.diff(levels)
     assert np.all(steps >= 1.5), f"RMS per level {np.round(levels, 2)} dB, steps {np.round(steps, 2)}"
+    assert mixes[0].gain_env is not None and mixes[0].gain_env[0] == (0, -12.0), "the first level holds from 0"
 
 
 def test_dyn_no_click(pipeline):
@@ -65,6 +65,13 @@ def test_dyn_no_click(pipeline):
         b = int((t0 + 2 * k) * 48000)
         r_dyn, r_plain = ratio(d, out, b), ratio(d0, plain, b)
         assert r_dyn <= 1.5 * r_plain, f"click at {LEVELS[k - 1]}->{LEVELS[k]}: step/RMS {r_dyn:.3f} vs {r_plain:.3f}"
-    env_gain = mixes[0].gain_env.astype(np.float64)
-    step_db = np.abs(np.diff(20 * np.log10(env_gain)))
-    assert step_db.max() <= 6.0 / (0.08 * 48000) * 1.01 + 1e-6, "the mix gain ramps, it never steps"
+    # breakpoints: per level change two points 80 ms apart (old level at the ramp start, new level on the beat)
+    pts = list(mixes[0].gain_env)
+    gains = {"pp": -12.0, "p": -8.0, "mp": -4.0, "mf": 0.0, "f": 2.0, "ff": 4.0}
+    assert len(pts) == 1 + 2 * (len(LEVELS) - 1)
+    assert [s for s, _ in pts] == sorted(s for s, _ in pts), "samples never go back"
+    for k in range(1, len(LEVELS)):
+        (sa, da), (sb, db) = pts[2 * k - 1], pts[2 * k]
+        assert (da, db) == (gains[LEVELS[k - 1]], gains[LEVELS[k]])
+        assert sb - sa == round(0.08 * 48000), "an 80-ms ramp, never a step"
+        assert sb + mixes[0].offset == round((t0 + 2 * k) * 48000), "the ramp ends on the beat"

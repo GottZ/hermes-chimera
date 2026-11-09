@@ -35,6 +35,31 @@ def test_worker_env(fake_workers, make_scheduler, tmp_path):
     assert info["pid"] != os.getpid()
 
 
+def test_test_hook_needs_chimera_testing(tmp_path):
+    """The voice-factory hook is ignored unless CHIMERA_TESTING=1: the worker then loads the real voice (until the
+    acoustics are merged that fails with an error reply; afterwards it renders something other than FakeVoice)."""
+    from chimera_vocal.worker import read_frame, write_frame
+    from support.fakes import FACTORY_SPEC, reference_render, spawn_worker
+    import numpy as np
+    job = fake_job("nohook", 0.05)
+    p = spawn_worker(tmp_path / "stderr.txt", env={"CHIMERA_WORKER_VOICE_FACTORY": FACTORY_SPEC,
+                                                   "CHIMERA_TESTING": "0"})
+    try:
+        write_frame(p.stdin, {"req": "h", "op": "render", "job": job.to_json(), "kernel": "numpy", "chunk": 48000})
+        pieces = []
+        while True:
+            m, raw = read_frame(p.stdout)
+            if m.get("ok") is False or m.get("done"):
+                break
+            if "chunk" in m:
+                pieces.append(np.frombuffer(raw, "<f4"))
+        fake_rendered = m.get("done") and np.array_equal(np.concatenate(pieces), reference_render(job))
+        assert not fake_rendered, "the factory hook must not act without CHIMERA_TESTING=1"
+    finally:
+        p.stdin.close()
+        p.wait(timeout=10)
+
+
 def test_worker_threads_env(fake_workers, make_scheduler, tmp_path, monkeypatch):
     """OPENBLAS/OMP/MKL thread counts are pinned to 1 in the worker environment."""
     probe = tmp_path / "probe.json"

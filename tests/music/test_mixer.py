@@ -1,5 +1,6 @@
 """Mixer contract (INTERFACES §8.4): MixWriter (disk) writes exactly what ``mix`` (memory) computes, voices land at
-their offsets, gain/gain_env/pan apply per sample, added voice files are consumed, ``estimate_memory`` is bounded.
+their offsets, gain/gain_env (dB breakpoints)/pan apply per sample, added voice files are consumed,
+``estimate_memory`` is bounded.
 (K-4.5 levels: tests/measure/test_mix_levels.py; K-5.10 memory: test_mix_memory.py.)"""
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ def tracks_and_mixes(rng: np.random.Generator, stereo: bool, env: bool):
     for i, (n, o) in enumerate(zip(lengths, offsets)):
         ge = None
         if env and i == 1:
-            ge = np.linspace(0.25, 1.6, n).astype(np.float32)
+            ge = ((0, -12.0), (1000, -12.0), (4000, 4.0), (6500, 0.0))
         mixes.append(VoiceMix(offset=o, gain_db=[-3.0, 0.0, 4.5][i], pan=[-0.7, 0.0, 1.0][i] if stereo else 0.0,
                               gain_env=ge))
     n_mix = max(o + n for o, n in zip(offsets, lengths)) + 100
@@ -72,10 +73,21 @@ def test_offsets_and_gains_mono(tmp_path):
 
 
 def test_gain_env_per_sample():
-    a = np.full(8, 0.1, np.float32)
-    env = np.array([0, 0.5, 1, 1, 2, 2, 1, 0], np.float32)
-    out, _ = mix([a], [VoiceMix(0, 0.0, 0.0, env)], 8, stereo=False, normalize=False)
-    assert out == pytest.approx(0.1 * env, abs=1e-7)
+    """Breakpoints ((sample, dB), …): piecewise linear in dB, constant before the first and after the last point."""
+    a = np.full(10, 0.1, np.float32)
+    env = ((2, -6.0), (6, 6.0))
+    out, _ = mix([a], [VoiceMix(0, 0.0, 0.0, env)], 10, stereo=False, normalize=False)
+    db = np.array([-6, -6, -6, -3, 0, 3, 6, 6, 6, 6], dtype=np.float64)
+    assert out == pytest.approx(0.1 * 10 ** (db / 20), rel=1e-6)
+
+
+def test_gain_env_chunk_independent():
+    from chimera_vocal.music.mixer import env_gains
+    pts = ((0, -12.0), (3000, -12.0), (6840, 4.0), (9000, 0.0))
+    whole = env_gains(pts, 0, 12000)
+    parts = np.concatenate([env_gains(pts, s, min(777, 12000 - s)) for s in range(0, 12000, 777)])
+    assert whole.dtype == np.float32 and np.array_equal(whole, parts)
+    assert env_gains(None, 0, 5) is None
 
 
 @pytest.mark.parametrize("pan", [-1.0, -0.5, 0.0, 0.25, 1.0])

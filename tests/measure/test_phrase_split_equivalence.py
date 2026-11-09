@@ -46,8 +46,11 @@ def test_phrase_split_equivalence(pipeline, tag, body, speed):
     w1 = 64 * split_jobs[1].start_block
     assert np.array_equal(split[:w1], cont[:w1]), "(a) samples before W_1 equal the continuous voice"
     onsets_s = [64 * j.start_block / 48000 + 0.05 for j in split_jobs[1:]]
-    fmin, fmax = (60, 500)
-    m = compare_split(cont, split, onsets_s=onsets_s, fmin=fmin, fmax=fmax)
+    # the real engine is measured over all 21 third-octave bands (the template study's definition); FakeVoice only
+    # over its active bands - its harmonic spectrum leaves the low bands nearly empty (window leakage only)
+    bands = "active40" if pipeline.kind == "fake" else "all"
+    m = compare_split(cont, split, onsets_s=onsets_s, fmin=60, fmax=500, bands=bands)
+    print(f"{tag}/{body}: {m}")
     assert m.env_p95_db <= 2.5, m
     assert m.f0_p90_ct <= 18.0, m
     assert m.f0_onset_p90_ct <= 20.0, m

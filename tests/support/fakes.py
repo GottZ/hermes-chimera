@@ -16,7 +16,8 @@
     - hold limiter = hard clamp to ±0.75 (human_voice.rs:374-392 peak), float32 output.
 * ``StubG2P`` / ``StubPlanner`` - record their arguments; StubPlanner implements the C1 calls the music and speech
   paths make (``planner_api()`` seam, chimera_vocal/music/planning.py) with deterministic, documented timing.
-* ``fake_voice_factory`` - installed in render workers through ``CHIMERA_WORKER_VOICE_FACTORY``; directives in the
+* ``fake_voice_factory`` - installed in render workers through ``CHIMERA_WORKER_VOICE_FACTORY`` (effective only
+  with ``CHIMERA_TESTING=1``); directives in the
   job id (``|``-separated) or in env ``CHIMERA_FAKE`` steer crashes, errors, slowness, stray output and probes.
 """
 
@@ -348,6 +349,7 @@ def fake_voice_factory(job: Any, kernel: Any, geometry: Any) -> FakeVoice:
 def worker_env(monkeypatch: Any, **directive_env: str) -> None:
     """Make every render worker started from now on use FakeVoice (and optional CHIMERA_FAKE directives)."""
     monkeypatch.setenv("CHIMERA_WORKER_VOICE_FACTORY", FACTORY_SPEC)
+    monkeypatch.setenv("CHIMERA_TESTING", "1")
     if directive_env.get("fake"):
         monkeypatch.setenv("CHIMERA_FAKE", directive_env["fake"])
 
@@ -491,7 +493,7 @@ def _vowel_group_split(w: str) -> list[str]:
 # --- stub planner -------------------------------------------------------------------------------------------
 
 LYRIC_PUNCT = frozenset(".,;:!?\n")
-# earliest gesture start before the first beat, as measured on the template (REVIEW-1 P1-work/rs/leadin.out):
+# earliest gesture start before the first beat, as measured on the template's plan_song (native, HEAD 092b16ce12b9):
 SONG_LEAD = {"ah": 0.080, "strength": 0.258, "splash": 0.266, "spring": 0.266}
 
 
@@ -817,7 +819,7 @@ def spawn_worker(stderr_path: str | os.PathLike, *, root: Path = REPO_ROOT, cach
     import subprocess
     from chimera_vocal import worker
     e = dict(os.environ)
-    e.update({"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"})
+    e.update({"OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "CHIMERA_TESTING": "1"})
     e.update(env or {})
     err = open(stderr_path, "wb")
     p = subprocess.Popen([sys.executable, *flags, "-c", worker.BOOTSTRAP], stdin=subprocess.PIPE,

@@ -140,6 +140,13 @@ def test_render_score_end_to_end(stub_planner, fake_workers, make_engine, tmp_pa
     assert sorted(os.listdir(tmp_path)) == [os.path.basename(res.path_wav)], "no temporary files left"
 
 
+def test_render_score_mp3_refused(stub_planner, fake_workers, make_engine, tmp_path):
+    """The engine never calls ffmpeg: MP3 is the Hermes adapter's job, want_mp3=True is a caller error."""
+    with pytest.raises(ValueError):
+        make_engine(workers=2).render_score(small_score(), str(tmp_path), "x", want_mp3=True)
+    assert os.listdir(tmp_path) == []
+
+
 def test_render_score_invalid(stub_planner, fake_workers, make_engine, tmp_path):
     with pytest.raises(ScoreError) as ei:
         make_engine(workers=2).render_score({"bpm": 500, "voices": []}, str(tmp_path), "x", want_mp3=False)

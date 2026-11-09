@@ -1,5 +1,5 @@
 {
- "source": "design/E1-work/phrase-split (E1-A, native template, HEAD 092b16ce12b9): data/<t>-<body>-phrases.tsv (t0/end/pause per phrase, 6 decimals), data/<t>-<body>-windows.tsv variant Psum-post15-warm (= the rule of DESIGN §3.3: W_k = 64·floor((t0_k − 0.05)·fs/64), E_k = ceil((end_k + 0.15)·fs), last E = js_round(fs·(end + 0.3))), data/cli-check.tsv len_C (= chimera render text length)",
+ "source": "Phrase-split measurement on the native template (jamesondh/chimera-vocal-synth@092b16ce12b9, chimera render text, male f0 112 / female 205 Hz): per text and body the planned phrases (t0, end, pause; 6 decimals), the windows of the split rule (W_k = 64·floor((t0_k − 0.05)·fs/64), E_k = ceil((end_k + 0.15)·fs), last E = js_round(fs·(end + 0.3))) and the length of the continuous render (n_total)",
  "fs": 48000,
  "jobs": [
   {

@@ -34,5 +34,6 @@ def test_voice_start_block(pipeline):
     got = pipeline.placed(pipeline.render(late), vm, n_mix)[:full_n]
     ref = pipeline.render(dataclasses.replace(late, start_block=0, settle_f0=False, n_out=full_n))
     t_first = report.lead_in + 16 * 60 / BPM
-    m = compare_split(ref, got, onsets_s=[t_first])
+    m = compare_split(ref, got, onsets_s=[t_first], bands="active40" if pipeline.kind == "fake" else "all")
+    print(m)
     assert m.env_p95_db <= 2.5 and m.f0_p90_ct <= 18 and m.f0_onset_p90_ct <= 20 and m.third_rms_db <= 0.3, m

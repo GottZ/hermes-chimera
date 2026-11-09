@@ -100,6 +100,36 @@ def test_compare_split_identity_and_shift():
     x = held(205.0, 2.0)
     m = compare_split(x, x, onsets_s=[0.5])
     assert m.env_p95_db == 0 and m.f0_p90_ct == 0 and m.f0_onset_p90_ct == 0 and m.third_rms_db == 0
+    assert m.octave_fixed == 0 and m.bands_excluded == 0
     y = held(205.0 * 2 ** (30 / 1200), 2.0)
     # p90 over frames carries the frame-level YIN spread (window 1024 as E1-A): 30 ct shift reads 30–36 ct
     assert compare_split(x, y, fmin=100, fmax=500).f0_p90_ct == pytest.approx(32, abs=5)
+
+
+def test_compare_split_keeps_real_octave():
+    """No octave folding: a render a true octave higher reads ~1200 ct (the harmonic sum confirms both octaves)."""
+    x = held(150.0, 1.5)
+    y = held(300.0, 1.5)
+    m = compare_split(x, y, fmin=60, fmax=700)
+    assert m.f0_p90_ct == pytest.approx(1200, abs=15), m
+
+
+def test_compare_split_resolves_yin_octave_slips():
+    """FakeVoice is H2-dominant: YIN slips an octave in some frames of one track but not the other; the harmonic sum
+    resolves those frames instead of folding, and the count is reported."""
+    x = held(205.0, 2.0)
+    m = compare_split(x, held(205.0, 2.0), fmin=60, fmax=500)
+    assert m.f0_p90_ct == 0
+    glide = FakeVoice()
+    glide.set_source({"f0": 205.0})
+    glide.schedule([Gesture(0.0, 2.0, 0.01, 0.01, 1.0, {"breath": 1.0}, label="breath")])
+    y = glide.render(96000).astype(np.float64)        # unsettled: glides up from 110 Hz
+    m2 = compare_split(x, y, fmin=60, fmax=500, onsets_s=[0.0])
+    assert m2.f0_onset_p90_ct > 300, m2              # the real 110 -> 205 Hz glide stays visible
+
+
+def test_compare_split_band_selection():
+    x = held(205.0, 2.0)
+    assert compare_split(x, x, bands="active40").bands_excluded > 0
+    with pytest.raises(ValueError):
+        compare_split(x, x, bands="some")

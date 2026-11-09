@@ -181,6 +181,7 @@ PARENT = textwrap.dedent(r"""
     import os, sys, threading, time
     sys.path[:0] = [sys.argv[1], sys.argv[2]]
     os.environ["CHIMERA_WORKER_VOICE_FACTORY"] = "support.fakes:fake_voice_factory"
+    os.environ["CHIMERA_TESTING"] = "1"
     import chimera_vocal.scheduler as s
     s._numba_installed = lambda: False
     s._marker_ok = lambda base: None

@@ -1,5 +1,5 @@
 """K-4.3 test_ref_renders (TESTPLAN L4, S3 mandatory, ``lab``, both kernels): the port renders the template's
-reference files (lab/refs/ref-audio, recon/ref-audio/manifest.md) in the template-faithful mode (``settle_first=False``,
+reference files (``$CHIMERA_LAB_REFS/ref-audio``, native CLI renders of HEAD 092b16ce12b9) in the template-faithful mode (``settle_first=False``,
 ``start_block = 0``) to T3 over the WHOLE file (max |Δ| <= 1e-6 × peak, length exact). Renders go through a real
 render worker (RenderScheduler) for both kernels. Red proof: tail 0.4 s instead of 0.3 s for ``text``."""
 

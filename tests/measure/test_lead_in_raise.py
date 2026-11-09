@@ -1,5 +1,5 @@
 """K-4.9 test_lead_in_raise (TESTPLAN L4, INTERFACES §8.2, P1-07): "strength" on beat 0 with lead_in 0.15 needs
-0.258 s before the beat (template, REVIEW-1 P1-work/rs/leadin.out) => warning, effective lead_in 0.27 s
+0.258 s before the beat (measured on the template's plan_song) => warning, effective lead_in 0.27 s
 (0.258 + 0.005 rounded up to 10 ms), no gesture starts before 0 s. Red proof: a fixed lower bound 0.15 without the
 check."""
 

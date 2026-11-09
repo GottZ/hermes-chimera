@@ -2,10 +2,10 @@
 YIN tracks, onsets, LPC formants, envelopes, third-octave spectra and the E1-A comparison metrics.
 
 Why no naked YIN for sung notes: with /ɑ/ the 2nd harmonic is 11–18 dB above the 1st and YIN reports the octave
-above (design/E1-work/pitch-range/REPORT.md, ``octave_check.py``). ``sung_f0`` therefore checks an octave jump of the
+above (measured on 111 native renders, MIDI 28-100 × three bodies). ``sung_f0`` therefore checks an octave jump of the
 YIN median against the target with harmonic summation (score(f) = Σ_k |X(k·f)|, k = 1..8, 1-s Hann segment, 8×
 zero padding) and a spectral peak at the candidate. Metric definitions of ``compare_*`` follow E1-A §2
-(design/E1-work/phrase-split/REPORT.md). numpy only (no scipy).
+(the phrase-split measurements on the native template). numpy only (no scipy).
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def hz(midi: float) -> float:
 def yin_frame(frame: np.ndarray, fs: float, fmin: float = 30.0, fmax: float = 1500.0,
               thr: float = 0.15) -> tuple[float, float]:
     """YIN on one frame (len >= window + fs/fmin + 1): (f0, cumulative-mean-normalised difference at tau).
-    Same procedure as E1-work/pitch-range/analyze.py ``yin`` (first dip below thr, parabolic refinement)."""
+    Standard YIN: first dip below thr, parabolic refinement."""
     x = np.asarray(frame, dtype=np.float64)
     tmin = max(2, int(fs / fmax))
     tmax = int(fs / fmin)
@@ -233,24 +233,53 @@ def lpc_formants(x: np.ndarray, fs: float = FS, *, order: int = 12, decimate: in
 
 # --- E1-A comparison metrics (K-4.8, K-4.10) ----------------------------------------------------------------
 
-def _folded(f: np.ndarray, ref: np.ndarray) -> np.ndarray:
-    """|Δ cents| folded to one octave: an octave slip of YIN in either track is a measurement artefact when two
-    renders of the same plan are compared (a real 110 -> 205 Hz onset glide, 1077 ct, still reads 123 ct)."""
-    c = 1200 * np.log2(f / ref)
-    return np.abs(c - 1200 * np.round(c / 1200))
+def _octave_resolve(x: np.ndarray, fs: float, t: float, f: float, win: int = 4096) -> float:
+    """One YIN frame value checked between f/2, f and 2f with the harmonic sum on a 4096-sample Hann segment around
+    ``t`` (same rule as ``sung_f0``: a candidate needs a spectral peak above -40 dB of the segment maximum)."""
+    c = int(round(t * fs))
+    seg = np.zeros(win)
+    a, b = max(0, c - win // 2), min(len(x), c + win // 2)
+    seg[a - (c - win // 2):b - (c - win // 2)] = x[a:b]
+    X = np.abs(np.fft.rfft(seg * np.hanning(win), 4 * win))
+    df = fs / (4 * win)
+    floor = 0.01 * float(X.max())
+
+    def peak(fc: float) -> float:
+        i = int(round(fc / df))
+        w = max(1, int(round(0.03 * fc / df)))
+        return float(X[max(0, i - w):i + w + 1].max()) if i - w < len(X) else 0.0
+
+    def score(fc: float) -> float:
+        return float(sum(X[int(round(k * fc / df))] for k in range(1, 9) if k * fc < fs / 2))
+
+    if peak(f / 2) >= floor and score(f / 2) >= score(f):
+        return f / 2
+    if peak(f) < floor and peak(2 * f) >= floor:
+        return 2 * f
+    return f
 
 
 @dataclass(frozen=True)
 class SplitMetrics:
     env_p95_db: float          # |Δ dB| of 10-ms RMS, frames where the reference is above max − 45 dB
-    f0_p90_ct: float           # |Δ cents| (octave-folded) where both are voiced
+    f0_p90_ct: float           # |Δ cents| where both are voiced (no octave folding)
     f0_onset_p90_ct: float     # same, restricted to [t0_k, t0_k + 0.15 s] for the given onsets
-    third_rms_db: float        # RMS of the dB difference over the third-octave bands within 40 dB of the
-                               # reference's strongest band (near-empty bands only carry window leakage)
+    third_rms_db: float        # RMS of the dB difference over the third-octave bands (see ``bands``)
+    octave_fixed: int = 0      # YIN frames whose octave was corrected by the harmonic sum (both tracks)
+    bands_excluded: int = 0    # third-octave bands left out (``bands="active40"`` only)
 
 
 def compare_split(ref: np.ndarray, got: np.ndarray, fs: float = FS, *, onsets_s: Sequence[float] = (),
-                  fmin: float = 60.0, fmax: float = 500.0) -> SplitMetrics:
+                  fmin: float = 60.0, fmax: float = 500.0, bands: str = "all") -> SplitMetrics:
+    """Envelope p95, f0 p90 (all / onsets) and third-octave RMS between two renders of the same plan, measured like the
+    phrase-split study on the native template: 10-ms RMS over frames above max − 45 dB, YIN (window 1024, 5-ms hop,
+    60–500 Hz) |Δ cents| over frames voiced in both - unfolded; where the two tracks disagree by more than half an
+    octave, each frame is re-decided between f/2, f, 2f by the harmonic sum (``octave_fixed`` counts the changes).
+    ``bands="all"``: all 21 third-octave bands 100 Hz–10 kHz (the study's definition, mandatory on the real engine);
+    ``bands="active40"``: only bands within 40 dB of the reference's strongest band (for FakeVoice, whose harmonic
+    spectrum leaves low bands nearly empty; ``bands_excluded`` counts the dropped bands)."""
+    if bands not in ("all", "active40"):
+        raise ValueError(bands)
     ref = np.asarray(ref, dtype=np.float64)
     got = np.asarray(got, dtype=np.float64)
     n = min(len(ref), len(got))
@@ -261,18 +290,24 @@ def compare_split(ref: np.ndarray, got: np.ndarray, fs: float = FS, *, onsets_s:
     t, fr = yin_track(ref, fs, fmin=fmin, fmax=fmax)
     _, fg = yin_track(got, fs, fmin=fmin, fmax=fmax)
     both = np.isfinite(fr) & np.isfinite(fg)
-    dc = _folded(fg[both], fr[both]) if both.any() else np.zeros(1)
+    fixed = 0
+    for i in np.flatnonzero(both):
+        if abs(1200 * math.log2(fg[i] / fr[i])) > 600:
+            a, b = _octave_resolve(ref, fs, t[i], fr[i]), _octave_resolve(got, fs, t[i], fg[i])
+            fixed += (a != fr[i]) + (b != fg[i])
+            fr[i], fg[i] = a, b
+    dc = np.abs(1200 * np.log2(fg[both] / fr[both])) if both.any() else np.zeros(1)
     f0p90 = float(np.percentile(dc, 90))
     if len(onsets_s):
         m = np.zeros_like(both)
         for t0 in onsets_s:
             m |= (t >= t0) & (t <= t0 + 0.15)
         mo = m & both
-        do = _folded(fg[mo], fr[mo]) if mo.any() else np.zeros(1)
+        do = np.abs(1200 * np.log2(fg[mo] / fr[mo])) if mo.any() else np.zeros(1)
         onset = float(np.percentile(do, 90))
     else:
         onset = 0.0
     tr, tg = third_octave_db(ref, fs), third_octave_db(got, fs)
-    active = tr > tr.max() - 40.0      # bands carrying the signal (E1-A's speech had all 21 within ~20 dB)
-    third = float(np.sqrt(np.mean((tr[active] - tg[active]) ** 2)))
-    return SplitMetrics(env, f0p90, onset, third)
+    sel = tr > tr.max() - 40.0 if bands == "active40" else np.ones(len(tr), dtype=bool)
+    third = float(np.sqrt(np.mean((tr[sel] - tg[sel]) ** 2)))
+    return SplitMetrics(env, f0p90, onset, third, int(fixed), int(len(tr) - sel.sum()))

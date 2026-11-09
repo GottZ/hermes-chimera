@@ -3,8 +3,8 @@ compiles to exactly the job the CLI renders (render.rs:481-575): same source, sa
 phrases split at rests, phrase start = time of its first note, t accumulated note by note), same length
 js_round(48000·(end + 0.4)), start_block 0, template seeds. Red proof: split phrases at phraseEnd instead of rests.
 
-Inputs: copies of the template-CLI inputs used for the reference renders (``data/render-notes-*.json`` =
-lab/refs/ref-audio/inputs/*.json, recon/ref-audio/manifest.md; sha256 equal). The ``stub`` planner runs in S1/S2,
+Inputs: copies of the template-CLI inputs of the reference renders (``data/render-notes-*.json`` =
+``$CHIMERA_LAB_REFS/ref-audio/inputs/*.json``, byte-identical). The ``stub`` planner runs in S1/S2,
 the ``real`` planner (C1) once the clusters are merged (S3)."""
 
 from __future__ import annotations
