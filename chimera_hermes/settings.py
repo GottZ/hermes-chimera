@@ -66,6 +66,12 @@ def resolve_voice(ctx: Any, hermes_voice: str | None) -> Any:
 
     The specific setting wins; ``tts.voice`` may hold another provider's voice ("alloy") and is then skipped with one
     warning per process and value."""
+    return resolve_voice_spec(ctx, hermes_voice)[1]
+
+
+def resolve_voice_spec(ctx: Any, hermes_voice: str | None) -> tuple[str, Any]:
+    """(voice spec text, preset) for ``resolve_voice``. Hand the engine the text, not the preset: Hermes imports the
+    plugin once per profile and every copy uses the engine of the first one, which only knows its own preset class."""
     presets = _vocal.api().presets
     for source, value in (("plugin setting 'voice'", setting(ctx, "voice")), ("tts.voice", hermes_voice)):
         if value is None or value == "":
@@ -73,10 +79,10 @@ def resolve_voice(ctx: Any, hermes_voice: str | None) -> Any:
         if isinstance(value, str) and value.strip():
             preset = presets.parse_voice_spec(value.strip())
             if preset is not None:
-                return preset
+                return value.strip(), preset
         _warn_once(f"voice:{source}:{value!r}",
                    "chimera: ignoring voice %r from %s (not a chimera voice; see /chimera voices)", value, source)
-    return presets.PRESETS[presets.DEFAULT_VOICE]
+    return presets.DEFAULT_VOICE, presets.PRESETS[presets.DEFAULT_VOICE]
 
 
 def _finite_positive(x: Any) -> float | None:
@@ -94,7 +100,7 @@ def resolve_speed(hermes_speed: float | None, preset: Any) -> float:
 
 
 def faithful(ctx: Any) -> bool:
-    """Plugin setting ``faithful``: speak exactly like the template web app (see Engine.speak)."""
+    """Plugin setting ``faithful``: speak like the template's ``chimera render text`` command (see Engine.speak)."""
     v = setting(ctx, "faithful", False)
     if isinstance(v, str):
         return v.strip().lower() in ("true", "1", "yes", "on")

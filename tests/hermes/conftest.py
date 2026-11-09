@@ -21,7 +21,7 @@ if str(SUPPORT) not in sys.path:
 
 import c5fakes  # noqa: E402
 
-_HERMES_TOPS = ("agent", "gateway", "hermes_cli", "hermes_constants")
+_HERMES_TOPS = ("agent", "gateway", "hermes_cli", "hermes_constants", "hermes_state")
 _ENV_CLEAN = ("HERMES_PLUGIN_HOST_PROCESS", "HERMES_CONCURRENT_TOOL_TIMEOUT_S", "HERMES_SESSION_PLATFORM",
               "CHIMERA_BACKEND", "CHIMERA_WORKERS", "CHIMERA_THREADS")
 
@@ -30,7 +30,8 @@ _ENV_CLEAN = ("HERMES_PLUGIN_HOST_PROCESS", "HERMES_CONCURRENT_TOOL_TIMEOUT_S", 
 def fake_hermes(tmp_path, monkeypatch):
     """Fake public Hermes modules with a fresh HERMES_HOME; yields a namespace with live handles:
     ``home`` (Path), ``config`` (dict behind load_config_readonly), ``session`` (dict behind get_session_env),
-    ``writes`` (core-config writes, must stay empty)."""
+    ``writes`` (core-config writes, must stay empty); ``modules.state.SESSIONS`` holds the session store's
+    compression chains."""
     saved = {k: v for k, v in sys.modules.items() if k.split(".")[0] in _HERMES_TOPS}
     for k in saved:
         del sys.modules[k]
@@ -40,6 +41,7 @@ def fake_hermes(tmp_path, monkeypatch):
     import gateway.session_context as session_context
     import hermes_cli.config as hconfig
     import hermes_constants
+    import hermes_state
 
     home = tmp_path / "hermes-home"
     home.mkdir()
@@ -47,9 +49,11 @@ def fake_hermes(tmp_path, monkeypatch):
     hconfig.CONFIG = {}
     hconfig.WRITES = []
     session_context.ENV = {}
+    hermes_state.SESSIONS = {}
+    hermes_state.OPENED = []
     yield types.SimpleNamespace(home=home, config=hconfig.CONFIG, session=session_context.ENV, writes=hconfig.WRITES,
                                 modules=types.SimpleNamespace(config=hconfig, session_context=session_context,
-                                                              constants=hermes_constants))
+                                                              constants=hermes_constants, state=hermes_state))
     for k in [k for k in sys.modules if k.split(".")[0] in _HERMES_TOPS]:
         del sys.modules[k]
     sys.modules.update(saved)

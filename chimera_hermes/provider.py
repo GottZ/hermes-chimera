@@ -84,9 +84,10 @@ class ChimeraTTSProvider:
         except Exception:
             return False
 
-    def _voice_and_speed(self, voice: Any, speed: Any) -> tuple[Any, float]:
-        preset = settings.resolve_voice(self._ctx, voice if isinstance(voice, str) else None)
-        return preset, settings.resolve_speed(speed, preset)
+    def _voice_and_speed(self, voice: Any, speed: Any) -> tuple[str, float]:
+        """(voice spec text for the engine, absolute speaking rate)."""
+        spec, preset = settings.resolve_voice_spec(self._ctx, voice if isinstance(voice, str) else None)
+        return spec, settings.resolve_speed(speed, preset)
 
     def synthesize(self, text: str, output_path: str, *, voice: str | None = None, model: str | None = None,
                    speed: float | None = None, format: str = "mp3", **extra: Any) -> str:
@@ -94,9 +95,10 @@ class ChimeraTTSProvider:
             raise FileNotFoundError(_vocal.NUMPY_MISSING)
         path, reserved = _target(str(output_path))
         try:
-            preset, spd = self._voice_and_speed(voice, speed)
-            _vocal.engine(self._ctx).speak_to_wav(text, path, preset, speed=spd,
-                                                  faithful=settings.faithful(self._ctx), tmp_dir=_tmp_dir())
+            spec, spd = self._voice_and_speed(voice, speed)
+            eng, cfg = _vocal.engine_and_config(self._ctx)
+            eng.speak_to_wav(text, path, spec, speed=spd, faithful=settings.faithful(self._ctx),
+                             tmp_dir=_tmp_dir(), **_vocal.speech_options(cfg))
         except Exception as e:  # never ValueError: Hermes would report a configuration error
             if reserved:
                 _remove_empty(path)
@@ -113,10 +115,10 @@ class ChimeraTTSProvider:
             raise NotImplementedError("chimera streams raw PCM only (format='pcm'); use synthesize() for files")
         if not self.is_available():
             raise FileNotFoundError(_vocal.NUMPY_MISSING)
-        preset, spd = self._voice_and_speed(voice, extra.get("speed"))
-        return self._pcm(text, preset, spd)
+        spec, spd = self._voice_and_speed(voice, extra.get("speed"))
+        return self._pcm(text, spec, spd)
 
-    def _pcm(self, text: str, preset: Any, spd: float) -> Iterator[bytes]:
+    def _pcm(self, text: str, spec: str, spd: float) -> Iterator[bytes]:
         # Closing this generator (the listener stopped) sets the cancel event and closes the engine stream, which
         # frees its render slot; nothing is shared between concurrent calls (Hermes prefetches up to 3 sentences).
         cancel = threading.Event()
@@ -124,9 +126,9 @@ class ChimeraTTSProvider:
         total = 0
         try:
             try:
-                gen = iter(_vocal.engine(self._ctx).speak_pcm16(text, preset, speed=spd,
-                                                                faithful=settings.faithful(self._ctx),
-                                                                tmp_dir=_tmp_dir(), cancel=cancel))
+                eng, cfg = _vocal.engine_and_config(self._ctx)
+                gen = iter(eng.speak_pcm16(text, spec, speed=spd, faithful=settings.faithful(self._ctx),
+                                           tmp_dir=_tmp_dir(), cancel=cancel, **_vocal.speech_options(cfg)))
                 for chunk in gen:
                     total += len(chunk)
                     if total > STREAM_WARN_BYTES and total - len(chunk) <= STREAM_WARN_BYTES:

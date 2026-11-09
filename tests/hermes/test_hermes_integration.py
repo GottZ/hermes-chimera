@@ -79,3 +79,109 @@ def test_validate_cli(hermes_lab):
         lines = [ln for ln in out.splitlines() if ln.startswith(("⚠", "✗"))]
         unexpected = [ln for ln in lines if "install out of sync" not in ln]
         assert unexpected == [], "\n".join(unexpected)
+
+
+SESSION_PROBE = r"""
+import json, os, shutil, sys, threading, time
+root, home = sys.argv[1], os.environ["HERMES_HOME"]
+dst = os.path.join(home, "plugins", "chimera")
+shutil.copytree(root, dst, ignore=shutil.ignore_patterns(".git", "tests", "tools", "accel", "__pycache__", "*.wav"))
+with open(os.path.join(home, "config.yaml"), "a", encoding="utf-8") as f:
+    f.write("plugins:\n  enabled: [chimera]\n")
+from hermes_cli.plugins import get_plugin_manager, get_plugin_command_handler
+mgr = get_plugin_manager()
+mgr.discover_and_load()
+listed = [p for p in mgr.list_plugins() if p.get("name") == "chimera" or p.get("key") == "chimera"]
+mod = next(m for n, m in sys.modules.items() if n.startswith("hermes_plugins.chimera") and n.endswith("chimera_hermes.tools"))
+pkg = mod.__name__.rsplit(".chimera_hermes.tools", 1)[0]
+tools, vocal, sessions = mod, sys.modules[pkg + ".chimera_hermes._vocal"], sys.modules[pkg + ".chimera_hermes.sessions"]
+tools._numpy_cache = True       # chimera_job needs no numpy; this Hermes venv has none
+from hermes_state import SessionDB
+db = SessionDB()
+db.create_session("S1", "cli", model="m")
+db.publish_compression_child(parent_session_id="S1", child_session_id="S2", source="cli",
+                             messages=[{"role": "user", "content": "summary"}], require_compression_lease=False)
+for sid in ("U1", "R1", "R2"):
+    db.create_session(sid, "cli", model="m")
+db.close()
+reg = vocal.jobs()
+
+def start(sid):
+    def fn(progress, cancel):
+        cancel.wait(120)
+        if cancel.is_set():
+            raise RuntimeError("cancelled")
+        return {"success": True, "status": "done"}
+    return reg.start("render", tools._owner({"session_id": sid}), fn, eta_s=0).id
+
+j1, j2, jr1, jr2 = start("S1"), start("U1"), start("R1"), start("R2")
+from tools.registry import registry
+out = {"plugin": listed, "lineage": sessions.compression_lineage("S2")}
+call = lambda jid, sid: json.loads(registry.dispatch("chimera_job", {"job_id": jid, "wait_s": 0}, session_id=sid, task_id="t"))
+out["after_compression"] = call(j1, "S2").get("status")
+out["foreign"] = call(j1, "U1").get("error", "")
+from hermes_cli.plugin_command_dispatch import invoke_plugin_command
+h = get_plugin_command_handler("chimera")
+out["slash_cancel"] = invoke_plugin_command(h, "cancel", source=None, session_id="U1", session_key="U1", platform="cli")
+time.sleep(0.2)
+out["slash_j2"] = reg.snapshot(j2).status
+out["slash_j1"] = reg.snapshot(j1).status
+out["slash_legacy"] = h("cancel")
+from hermes_cli.lifecycle import finalize_session, invoke_hook
+finalize_session(session_id="S2", platform="cli", reason="session_boundary")
+invoke_hook("on_session_reset", session_id="R2", platform="tui")
+invoke_hook("on_session_reset", session_id="N1", reason="new_session", platform="telegram", old_session_id="R1",
+            new_session_id="N1")
+time.sleep(0.3)
+out["finalize_j1"] = reg.snapshot(j1).status
+out["reset_jr1"] = reg.snapshot(jr1).status
+out["rebuild_jr2"] = reg.snapshot(jr2).status
+reg.cancel_owned(["session_id:R2"])
+print(json.dumps(out, default=str))
+"""
+
+
+# Session end and context compression against Hermes itself: the plugin loads through Hermes' plugin manager with
+# its two session hooks; a job started in session S1 is reachable through Hermes' tool dispatch from S2 after a
+# compression published by Hermes' own SessionDB, not from another session; Hermes' slash-command dispatch passes the
+# session id to /chimera cancel (which stops only that session's render); Hermes' finalize_session for S2 stops the
+# job started in S1; on_session_reset stops the old_session_id's job and leaves a session that is only rebuilt alone
+# (red proof R2A-13/R2A-21: no hooks, binding on session_id only)
+def test_session_lifecycle_with_hermes(hermes_lab):
+    r = subprocess.run([str(hermes_lab.python), "-c", SESSION_PROBE, str(c5fakes.REPO_ROOT)], env=hermes_lab.env,
+                       capture_output=True, text=True, timeout=300, cwd=str(hermes_lab.tmp))
+    assert r.returncode == 0, r.stderr[-4000:]
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert len(out["plugin"]) == 1 and out["plugin"][0]["error"] is None, out["plugin"]
+    assert out["plugin"][0]["hooks"] == 2 and out["plugin"][0]["commands"] == 1, out["plugin"]
+    assert out["lineage"] == ["S1", "S2"]
+    assert out["after_compression"] == "running", out
+    assert "unknown job" in out["foreign"], out
+    assert out["slash_cancel"].startswith("stopping 1 chimera render"), out
+    assert (out["slash_j2"], out["slash_j1"]) == ("cancelled", "running"), out
+    assert "0.22.6" in out["slash_legacy"] and "chimera_job" in out["slash_legacy"], out
+    assert out["finalize_j1"] == "cancelled" and out["reset_jr1"] == "cancelled", out
+    assert out["rebuild_jr2"] == "running", out
+
+
+SCAN_PROBE = r"""
+import json, sys
+from pathlib import Path
+from tools.plugin_guard import scan_plugin
+r = scan_plugin(Path(sys.argv[1]))
+print(json.dumps({"verdict": r.verdict, "kinds": sorted({f.pattern_id for f in r.findings}),
+                  "severities": sorted({f.severity for f in r.findings})}))
+"""
+
+
+# The README's disclosure names every kind of note Hermes' install-time scanner reports for this tree
+# (red proof R2A-24: two of ten kinds named)
+def test_install_scanner_notes_disclosed(hermes_lab):
+    r = subprocess.run([str(hermes_lab.python), "-c", SCAN_PROBE, str(c5fakes.REPO_ROOT)], env=hermes_lab.env,
+                       capture_output=True, text=True, timeout=300, cwd=str(hermes_lab.tmp))
+    assert r.returncode == 0, r.stderr[-4000:]
+    out = json.loads(r.stdout.strip().splitlines()[-1])
+    assert out["verdict"] == "safe" and out["severities"] == ["medium"], out
+    readme = (c5fakes.REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    missing = [k for k in out["kinds"] if f"`{k}`" not in readme]
+    assert missing == [], f"README does not name these scanner notes: {missing}"

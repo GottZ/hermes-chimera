@@ -16,7 +16,7 @@ import math
 import os
 from typing import Any, Callable
 
-from . import _vocal, media, paths, settings
+from . import _vocal, media, paths, sessions, settings
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ CHIMERA_SPEAK = {"name": "chimera_speak",
                   "For your normal spoken replies use text_to_speech. " + _MEDIA_RULE),
   "parameters": {"type": "object", "properties": {
       "text": {"type": "string"}, "voice": {"type": "string"}, "speed": {"type": "number", "description": "0.5-1.8"},
-      "faithful": {"type": "boolean", "description": "true: render exactly like the original chimera web app (no number/abbreviation expansion, one piece, pitch glides in at the start)"},
+      "faithful": {"type": "boolean", "description": "true: render like the original chimera's command line `chimera render text` (no number/abbreviation expansion, one piece, pitch glides in at the start); the original web app uses other default pitches"},
       "wait_s": {"type": "number", "description": "Optional: max seconds to wait before returning a job id (0 = return at once)"}},
     "required": ["text"]}}
 CHIMERA_JOB = {"name": "chimera_job",
@@ -151,12 +151,10 @@ def _opt_number(a: dict, key: str, *, lo: float = 0.0, positive: bool = False) -
 
 
 def _owner(kwargs: dict) -> frozenset | None:
-    """Who may wait for a job: the conversation (Hermes passes ``conversation_id`` from 0.23.x canaries on; it
-    survives context compression) and the session (``session_id``, passed by every supported Hermes). A later call
-    matches when it shares one of them."""
-    ids = frozenset(f"{key}:{v}" for key in ("conversation_id", "session_id")
-                    if isinstance(v := kwargs.get(key), str) and v)
-    return ids or None
+    """Who may wait for a job: the conversation (``conversation_id``, passed by newer Hermes) and the session
+    (``session_id``, passed by every supported Hermes). A later call matches when it shares one of them or, after a
+    context compression, when its session continues the job's session (``sessions.py``)."""
+    return sessions.owner_ids(kwargs)
 
 
 def _opt_bool(a: dict, key: str) -> bool | None:
@@ -269,11 +267,11 @@ def _tmp_dir() -> str | None:
         return None
 
 
-def _respond(job_id: str, owner: str | None, wait_s: float | None) -> str:
+def _respond(job_id: str, owner: Any, wait_s: float | None, related: Any = None) -> str:
     from .jobs import wait_budget_s
 
     reg = _vocal.jobs()
-    st = reg.wait(job_id, owner, wait_budget_s(wait_s))
+    st = reg.wait(job_id, owner, wait_budget_s(wait_s), related=related)
     if st.status == "done" and st.result is not None:
         return _ok({**st.result, "job_id": st.id})
     if st.status in ("failed", "cancelled"):
@@ -323,8 +321,9 @@ def _render(a: dict, **kwargs: Any) -> str:
     score = _score(a)
     filename = _opt_str(a, "filename")
     wait_s = _opt_number(a, "wait_s")
-    eng = _vocal.engine()
-    report = eng.check_score(score)
+    eng, cfg = _vocal.engine_and_config()
+    opts = _vocal.score_options(cfg)
+    report = eng.check_score(score, max_voices=opts["max_voices"])
     if not report.ok:
         issues = _issues(report.issues)
         n = sum(1 for i in issues if i.get("severity") == "error") or len(issues)
@@ -340,7 +339,7 @@ def _render(a: dict, **kwargs: Any) -> str:
         out_dir, stem = paths.new_output_stem(raw_name, "score")
         try:
             res = eng.render_score(score, str(out_dir), stem, want_mp3=False, progress=progress, cancel=cancel,
-                                   tmp_dir=_tmp_dir())
+                                   tmp_dir=_tmp_dir(), **opts)
         except BaseException:
             _remove_empty(out_dir / f"{stem}.wav")
             raise
@@ -360,8 +359,8 @@ def _check(a: dict, **kwargs: Any) -> str:
     from .jobs import wait_budget_s
 
     score = _score(a)
-    eng = _vocal.engine()
-    report = eng.check_score(score)
+    eng, cfg = _vocal.engine_and_config()
+    report = eng.check_score(score, max_voices=_vocal.score_options(cfg)["max_voices"])
     kernel = _kernel_now(eng)
     est = dict(report.estimate_s or {})
     budget = wait_budget_s(None)
@@ -388,15 +387,17 @@ def _speak(a: dict, **kwargs: Any) -> str:
         faithful = settings.faithful(_vocal.ctx())
     presets = _vocal.api().presets
     if voice is not None and voice.strip():
-        preset = presets.parse_voice_spec(voice.strip())
+        spec = voice.strip()
+        preset = presets.parse_voice_spec(spec)
         if preset is None:
             raise ArgError(f"unknown voice {voice!r}; use one of {', '.join(presets.PRESETS)} or a spec like "
                            "'female;pitch=230'")
     else:
         tts_voice = settings.core_tts().get("voice")
-        preset = settings.resolve_voice(_vocal.ctx(), tts_voice if isinstance(tts_voice, str) else None)
+        spec, preset = settings.resolve_voice_spec(_vocal.ctx(), tts_voice if isinstance(tts_voice, str) else None)
     spd = settings.resolve_speed(speed, preset)
-    eng = _vocal.engine()
+    eng, cfg = _vocal.engine_and_config()
+    opts = _vocal.speech_options(cfg)
     want_mp3, fmt_warning = _want_mp3(None)
     eta = _speak_eta(eng, text)
 
@@ -405,8 +406,8 @@ def _speak(a: dict, **kwargs: Any) -> str:
         out_dir, stem = paths.new_output_stem(text[:60], "speech")
         wav = str(out_dir / f"{stem}.wav")
         try:
-            res = eng.speak_to_wav(text, wav, preset, speed=spd, faithful=faithful, tmp_dir=_tmp_dir(),
-                                   cancel=cancel)
+            res = eng.speak_to_wav(text, wav, spec, speed=spd, faithful=faithful, tmp_dir=_tmp_dir(),
+                                   cancel=cancel, **opts)
         except Exception as e:
             _remove_empty(wav)
             if _vocal.is_error(e, "TextError"):
@@ -431,11 +432,12 @@ def _job(a: dict, **kwargs: Any) -> str:
         raise ArgError("`job_id` must be the job id string a chimera tool returned")
     wait_s = _opt_number(a, "wait_s")
     cancel = _opt_bool(a, "cancel")
+    related = sessions.related_lookup(kwargs)
     try:
         if cancel:
-            _vocal.jobs().cancel(job_id.strip(), _owner(kwargs))
-            return _respond(job_id.strip(), _owner(kwargs), 10.0 if wait_s is None else wait_s)
-        return _respond(job_id.strip(), _owner(kwargs), wait_s)
+            _vocal.jobs().cancel(job_id.strip(), _owner(kwargs), related=related)
+            return _respond(job_id.strip(), _owner(kwargs), 10.0 if wait_s is None else wait_s, related)
+        return _respond(job_id.strip(), _owner(kwargs), wait_s, related)
     except KeyError:
         return _fail(f"unknown job {job_id!r}: jobs live in this Hermes process for 2 hours and belong to the "
                      "conversation that started them")

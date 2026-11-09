@@ -19,7 +19,7 @@ Each test directory covers one layer of the engine, from the arithmetic helpers 
 | 3 | `dsp/` | acoustic network, glottis, decimator, both kernels (numpy and numba), voice |
 | 4 | `measure/` | measurements on rendered audio: pitch, formants, levels, onsets, determinism |
 | 5 | `engine/`, `music/` | engine API, worker processes, scheduler, score validation, mixer |
-| 6 | `hermes/` | plugin registration, tools, TTS provider, slash command, settings, docs |
+| 6 | `hermes/` | plugin registration, tools, TTS provider, slash command, settings, jobs and sessions, several profiles in one process, docs |
 
 ## Test IDs
 

@@ -47,9 +47,14 @@ def test_register_fake_ctx(registered, plugin):
 
     assert set(ctx.commands) == {"chimera"}
     cmd = ctx.commands["chimera"]
-    assert cmd["args_hint"] == "[status|voices|voice <id>|warmup|test]"
+    assert cmd["args_hint"] == "[status|voices|voice <id>|warmup|test|cancel [job id]]"
     assert cmd["description"]
     assert isinstance(cmd["handler"]("voices"), str)
+
+    # session end stops the session's renders; on_session_end fires after every turn and must not be used
+    assert set(ctx.hooks) == {"on_session_finalize", "on_session_reset"}
+    assert all(len(cbs) == 1 and callable(cbs[0]) for cbs in ctx.hooks.values())
+    assert set(_yaml_list(manifest, "provides_hooks")) == set(ctx.hooks)
 
     assert set(ctx.cli_commands) == {"chimera"}
     cli = ctx.cli_commands["chimera"]

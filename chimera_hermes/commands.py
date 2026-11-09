@@ -15,10 +15,10 @@ import time
 import urllib.parse
 from typing import Any, Callable
 
-from . import _vocal, media, paths, settings
+from . import _vocal, media, paths, sessions, settings
 
-SLASH_DESCRIPTION = "Chimera voices: status, voices, voice <id>, warmup, test"
-SLASH_ARGS_HINT = "[status|voices|voice <id>|warmup|test]"
+SLASH_DESCRIPTION = "Chimera voices: status, voices, voice <id>, warmup, test, cancel"
+SLASH_ARGS_HINT = "[status|voices|voice <id>|warmup|test|cancel [job id]]"
 CLI_HELP = "Chimera vocal synth"
 COMPANION = "chimera-numba"
 DESKTOP_INSTALL = "Desktop: Capabilities -> Plugins -> Install from repository"
@@ -254,8 +254,38 @@ def _selftest(ctx: Any) -> str:
             f"{getattr(r, 'detail', '')}").strip()
 
 
-def handle_slash(raw_args: str, *, ctx: Any = None) -> str:
-    """``/chimera [status|voices|voice <id>|warmup|test]``; never raises."""
+NOT_PASSED: Any = object()        # Hermes before 0.22.6 calls a command handler with the arguments only
+
+CANCEL_UNSUPPORTED = ("/chimera cancel needs Hermes 0.22.6 or newer: older versions do not tell a command which "
+                      "session it belongs to. Ask the agent to stop the render instead (chimera_job with "
+                      "cancel: true).")
+
+
+def _cancel(rest: str, session_id: Any) -> str:
+    """Stop the unfinished renders of the caller's session (or the one job named), never another session's."""
+    if session_id is NOT_PASSED:
+        return CANCEL_UNSUPPORTED
+    if not isinstance(session_id, str) or not session_id:
+        return "no session here: /chimera cancel stops the renders of the current conversation"
+    reg = _vocal.jobs_if_any()
+    job_id = rest.strip()
+    if job_id:
+        try:
+            if reg is None:
+                raise KeyError(job_id)
+            reg.cancel(job_id, f"session_id:{session_id}", related=lambda: sessions.related_ids(session_id))
+        except KeyError:
+            return f"unknown job {job_id!r} in this conversation"
+        return f"stopping chimera render {job_id}"
+    stopped = sessions.cancel_session(session_id)
+    if not stopped:
+        return "no chimera render is running in this conversation"
+    return f"stopping {len(stopped)} chimera render(s): " + ", ".join(stopped)
+
+
+def handle_slash(raw_args: str, *, ctx: Any = None, session_id: Any = NOT_PASSED) -> str:
+    """``/chimera [status|voices|voice <id>|warmup|test|cancel [job id]]``; never raises. ``session_id`` is the
+    caller's session as Hermes passes it to command handlers (from 0.22.6)."""
     ctx = ctx if ctx is not None else _vocal.ctx()
     parts = (raw_args or "").strip().split(maxsplit=1)
     sub = parts[0].lower() if parts else "status"
@@ -271,14 +301,18 @@ def handle_slash(raw_args: str, *, ctx: Any = None) -> str:
             return _warmup(ctx)
         if sub in ("test", "selftest"):
             return _selftest(ctx)
+        if sub == "cancel":
+            return _cancel(rest, session_id)
         return f"unknown subcommand {sub!r}. Usage: /chimera {SLASH_ARGS_HINT}"
     except Exception as e:  # a slash command answers, it does not crash the session
         return f"/chimera {sub} failed: {type(e).__name__}: {e}"
 
 
-def handle_slash_factory(ctx: Any) -> Callable[[str], str]:
-    def chimera(raw_args: str) -> str:
-        return handle_slash(raw_args, ctx=ctx)
+def handle_slash_factory(ctx: Any) -> Callable[..., str]:
+    # Hermes 0.22.6+ passes session_id (and session_key, source, platform) to a handler that names it as a keyword
+    # (hermes_cli/plugin_command_dispatch.py); older versions call handler(raw_args), leaving NOT_PASSED.
+    def chimera(raw_args: str, *, session_id: Any = NOT_PASSED) -> str:
+        return handle_slash(raw_args, ctx=ctx, session_id=session_id)
 
     return chimera
 
@@ -321,7 +355,7 @@ def run_cli(args: Any) -> int:
         if not _vocal.numpy_ok():
             print(_vocal.NUMPY_MISSING, file=sys.stderr)
             return 2
-        eng = _vocal.engine(ctx)
+        eng, cfg = _vocal.engine_and_config(ctx)
         if cmd == "warmup":
             eng.warmup()        # starts the warm-up at once: state "warming" until it ends ready, failed or cold
             deadline = time.monotonic() + 900.0
@@ -339,15 +373,18 @@ def run_cli(args: Any) -> int:
                   f"self-test {'passed' if r.passed else 'FAILED'}: backend {r.backend}, {r.detail}", file=out)
             return 0 if getattr(r, "passed", False) else 1
         if cmd == "check":
-            report = eng.check_score(_read_score(args.score))
+            report = eng.check_score(_read_score(args.score), max_voices=_vocal.score_options(cfg)["max_voices"])
             for i in report.issues:
                 print(f"{i.severity}: {i.path}: {i.message}", file=out)
             print(f"{'ok' if report.ok else 'invalid'}: {report.seconds:.1f} s, {len(report.voices)} voice(s)", file=out)
             return 0 if report.ok else 1
         if cmd == "say":
             text = " ".join(args.text)
-            preset = (_vocal.api().presets.parse_voice_spec(args.voice) if args.voice else
-                      settings.resolve_voice(ctx, settings.core_tts().get("voice")))
+            if args.voice:
+                spec, preset = args.voice.strip(), _vocal.api().presets.parse_voice_spec(args.voice.strip())
+            else:
+                tts_voice = settings.core_tts().get("voice")
+                spec, preset = settings.resolve_voice_spec(ctx, tts_voice if isinstance(tts_voice, str) else None)
             if preset is None:
                 print(f"unknown voice {args.voice!r}", file=sys.stderr)
                 return 2
@@ -356,13 +393,15 @@ def run_cli(args: Any) -> int:
             else:
                 d, stem = paths.new_output_stem(text[:60], "speech")
                 path = str(d / f"{stem}.wav")
-            eng.speak_to_wav(text, path, preset, speed=settings.resolve_speed(None, preset),
-                             faithful=settings.faithful(ctx), tmp_dir=str(paths.tmp_dir(create=True)))
+            eng.speak_to_wav(text, path, spec, speed=settings.resolve_speed(None, preset),
+                             faithful=settings.faithful(ctx), tmp_dir=str(paths.tmp_dir(create=True)),
+                             **_vocal.speech_options(cfg))
             print(path, file=out)
             return 0
         if cmd == "sing":
             score = _read_score(args.score)
-            report = eng.check_score(score)
+            opts = _vocal.score_options(cfg)
+            report = eng.check_score(score, max_voices=opts["max_voices"])
             if not report.ok:
                 for i in report.issues:
                     print(f"{i.severity}: {i.path}: {i.message}", file=sys.stderr)
@@ -373,7 +412,8 @@ def run_cli(args: Any) -> int:
             else:
                 d, stem = paths.new_output_stem(score.get("title") if isinstance(score, dict) else None, "score")
                 out_dir = str(d)
-            res = eng.render_score(score, out_dir, stem, want_mp3=False, tmp_dir=str(paths.tmp_dir(create=True)))
+            res = eng.render_score(score, out_dir, stem, want_mp3=False, tmp_dir=str(paths.tmp_dir(create=True)),
+                                   **opts)
             print(res.path_wav, file=out)
             return 0
         print(f"unknown command {cmd!r}", file=sys.stderr)

@@ -25,6 +25,7 @@ Use it for choirs, canons, duets, chants, sung greetings and spoken lines over a
 5. If the result says `"status": "running"`, call `chimera_job` with the `job_id` (repeat until `done`). Long scores
    on a computer without the numba accelerator take a while; tell the user it is rendering. `chimera_job` with
    `cancel: true` stops a render the user no longer wants; `wait_s: 0` returns a job id at once instead of waiting.
+   A job stays yours after a context compression; when the session ends (for example `/new`) it stops.
    `chimera_speak` reads at most 4000 characters per call; split longer texts into several calls.
 
 ## Score format
@@ -105,6 +106,10 @@ Only when the user asks for the exact output of the original chimera-vocal-synth
 (no `start`, no leading rest), `lead_in` stays at its default, every voice gets `"seed": 0`, the score sets
 `"normalize": false`, and only `bpm`, `body`, `vibrato`, notes and lyrics are used. Each voice then matches the
 original's `render notes` sample for sample.
+
+For speech, `chimera_speak` with `faithful: true` matches the original's command line `chimera render text`
+sample for sample. The original's web app speaks with other default pitches (male 110 Hz, child 260 Hz), so its
+output is not reproduced exactly.
 
 Otherwise leave `seed` out. Voices that enter later are rendered from shortly before their entry, and voices after
 the first get their own random seed - both on purpose: timing stays the same, the sound is a different random take

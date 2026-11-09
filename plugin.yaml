@@ -10,6 +10,7 @@ requires_hermes: ">=0.21.6"
 platforms: [linux, macos, windows]
 tags: [voice, tts, music, singing, audio, local]
 provides_tools: [chimera_render, chimera_check, chimera_speak, chimera_job]
+provides_hooks: [on_session_finalize, on_session_reset]   # a session that ends stops its renders
 config_keys: [tts.voice, tts.chimera]          # honoured from v0.22.6; older Hermes logs "unknown field" and loads
 config_schema:
   voice:      {type: str, default: "", description: "Chimera voice for spoken replies (empty = tts.voice or 'male')",
@@ -23,4 +24,4 @@ config_schema:
   keep_days:  {type: int, default: 7, description: "Delete rendered chimera audio older than this (0 = keep)"}
   max_voices: {type: int, default: 8, description: "Largest ensemble one score may have"}
   faithful:   {type: bool, default: false,
-               description: "Speak exactly like the original chimera web app (no number expansion, no phrase split)"}
+               description: "Speak like the original's command line `chimera render text` (no number expansion, no phrase split; its web app uses other default pitches)"}

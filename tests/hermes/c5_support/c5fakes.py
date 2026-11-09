@@ -90,6 +90,7 @@ class FakeCtx:
         self.commands: dict[str, dict] = {}
         self.cli_commands: dict[str, dict] = {}
         self.skills: dict[str, dict] = {}
+        self.hooks: dict[str, list[Callable]] = {}
         self.order: list[tuple[str, str]] = []
 
     def register_tts_provider(self, provider) -> None:
@@ -123,6 +124,14 @@ class FakeCtx:
             raise FileNotFoundError(f"SKILL.md not found at {path}")
         self.skills[name] = {"path": path, "description": description, "frontmatter": dict(frontmatter or {})}
         self.order.append(("skill", name))
+
+    def register_hook(self, hook_name: str, callback: Callable) -> None:
+        self.hooks.setdefault(hook_name, []).append(callback)
+        self.order.append(("hook", hook_name))
+
+    def fire(self, hook_name: str, **kwargs: Any) -> list:
+        """Call the hooks registered for ``hook_name`` with keyword arguments, like Hermes' invoke_hook."""
+        return [cb(**kwargs) for cb in self.hooks.get(hook_name, [])]
 
     def get_config(self, key: str, default: Any = None) -> Any:
         return self.settings.get(key, default)
@@ -482,7 +491,11 @@ class FakeEngine:
     # helpers for assertions
     @staticmethod
     def voice_id(voice: Any) -> str:
-        return voice if isinstance(voice, str) else getattr(voice, "id", repr(voice))
+        """Preset id of what the engine received: voice spec text (parsed as the engine parses it) or a preset."""
+        if isinstance(voice, str):
+            preset = parse_voice_spec(voice)
+            return preset.id if preset is not None else voice
+        return getattr(voice, "id", repr(voice))
 
     @staticmethod
     def expected_samples(text: str):
@@ -494,17 +507,19 @@ class FakeEngine:
 
     # Engine API
     def speak(self, text: str, voice: Any = "male", *, speed: float | None = None, settle_first: bool = True,
-              faithful: bool = False, cancel: threading.Event | None = None):
+              faithful: bool = False, text_prep: bool | None = None, backend: str | None = None,
+              cancel: threading.Event | None = None):
         self._record("speak", text=text, voice=voice, speed=speed, settle_first=settle_first, faithful=faithful,
-                     cancel=cancel)
+                     text_prep=text_prep, backend=backend, cancel=cancel)
         return self._speak(text, cancel)
 
     def speak_to_wav(self, text: str, path, voice: Any = "male", *, speed: float | None = None,
-                     settle_first: bool = True, faithful: bool = False, tmp_dir: str | None = None,
+                     settle_first: bool = True, faithful: bool = False, text_prep: bool | None = None,
+                     backend: str | None = None, tmp_dir: str | None = None,
                      cancel: threading.Event | None = None) -> FakeSpeechResult:
         """Recorded as a "speak" call (with ``path`` and ``tmp_dir``); writes the same WAV as speak().to_wav."""
         self._record("speak", text=text, voice=voice, speed=speed, settle_first=settle_first, faithful=faithful,
-                     cancel=cancel, path=str(path), tmp_dir=tmp_dir)
+                     text_prep=text_prep, backend=backend, cancel=cancel, path=str(path), tmp_dir=tmp_dir)
         audio, kernel = self._speak(text, cancel)
         audio.to_wav(path)
         return FakeSpeechResult(str(path), audio.duration_s(), FS, kernel, 0.0)
@@ -520,9 +535,10 @@ class FakeEngine:
         return FakeAudio(self.expected_samples(text)), self.kernel
 
     def speak_pcm16(self, text: str, voice: Any = "male", *, speed: float | None = None, faithful: bool = False,
-                    tmp_dir: str | None = None, cancel: threading.Event | None = None) -> Iterator[bytes]:
-        self._record("speak_pcm16", text=text, voice=voice, speed=speed, faithful=faithful, tmp_dir=tmp_dir,
-                     cancel=cancel)
+                    text_prep: bool | None = None, backend: str | None = None, tmp_dir: str | None = None,
+                    cancel: threading.Event | None = None) -> Iterator[bytes]:
+        self._record("speak_pcm16", text=text, voice=voice, speed=speed, faithful=faithful, text_prep=text_prep,
+                     backend=backend, tmp_dir=tmp_dir, cancel=cancel)
         if cancel is not None:
             with self._lock:
                 self.cancel_events.append(cancel)
@@ -546,8 +562,8 @@ class FakeEngine:
                 self.active_streams -= 1
                 self.closed_streams += 1
 
-    def check_score(self, score: "dict | str") -> FakeScoreReport:
-        self._record("check_score", score=score)
+    def check_score(self, score: "dict | str", *, max_voices: int | None = None) -> FakeScoreReport:
+        self._record("check_score", score=score, max_voices=max_voices)
         self._maybe_fail("check_score")
         if isinstance(score, str):
             score = json.loads(score)
@@ -562,6 +578,8 @@ class FakeEngine:
         if not isinstance(voices, list) or not voices:
             issues.append(FakeScoreIssue("voices", "error", "give 1..8 voices"))
             voices = []
+        elif max_voices is not None and len(voices) > max_voices:
+            issues.append(FakeScoreIssue("voices", "error", f"{len(voices)} voices exceed the limit of {max_voices}"))
         summaries = [FakeVoiceSummary(str(v.get("name", f"voice{i}")) if isinstance(v, dict) else f"voice{i}",
                                       "male", 1, 1, 0, 0.0, 1.0, self.score_seconds, "C4", "C4", ["ah"])
                      for i, v in enumerate(voices)]
@@ -572,9 +590,10 @@ class FakeEngine:
 
     def render_score(self, score: "dict | str", out_dir: str, stem: str, *, want_mp3: bool,
                      progress: Callable[[float], None] | None = None,
-                     cancel: threading.Event | None = None, tmp_dir: str | None = None) -> FakeScoreResult:
+                     cancel: threading.Event | None = None, tmp_dir: str | None = None,
+                     max_voices: int | None = None, backend: str | None = None) -> FakeScoreResult:
         self._record("render_score", score=score, out_dir=out_dir, stem=stem, want_mp3=want_mp3,
-                     cancel=cancel, tmp_dir=tmp_dir)
+                     cancel=cancel, tmp_dir=tmp_dir, max_voices=max_voices, backend=backend)
         self._maybe_fail("render_score")
         t0 = time.monotonic()
         steps = max(1, int(self.render_delay / 0.02)) if self.render_delay else 1
@@ -659,7 +678,7 @@ def make_fake_vocal(engine: FakeEngine | None = None) -> types.SimpleNamespace:
                                     list_voices=list_voices, VoicePreset=FakePreset)
     return types.SimpleNamespace(
         __version__="0.1.0", EngineConfig=FakeEngineConfig, get_engine=get_engine, reconfigure=get_engine,
-        presets=presets, runtime=types.SimpleNamespace(runtime=lambda: rt, Runtime=FakeRuntime),
+        presets=presets, runtime=types.SimpleNamespace(runtime=lambda: rt, existing=lambda: rt, Runtime=FakeRuntime),
         ChimeraError=FakeChimeraError, ScoreError=FakeScoreError, TextError=FakeTextError,
         RenderCancelled=FakeRenderCancelled, BackendError=FakeBackendError,
         engine=engine, configs=configs, rt=rt,
