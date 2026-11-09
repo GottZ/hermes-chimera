@@ -1,0 +1,500 @@
+{
+ "source": "Phrase-split measurement on the native template (jamesondh/chimera-vocal-synth@092b16ce12b9, chimera render text, male f0 112 / female 205 Hz): per text and body the planned phrases (t0, end, pause; 6 decimals), the windows of the split rule (W_k = 64·floor((t0_k − 0.05)·fs/64), E_k = ceil((end_k + 0.15)·fs), last E = js_round(fs·(end + 0.3))) and the length of the continuous render (n_total)",
+ "fs": 48000,
+ "jobs": [
+  {
+   "tag": "t1-male",
+   "text": "Hello there, my name is Chimera. Can you hear me? I can read long answers, one sentence at a time.",
+   "body": "male",
+   "phrases": [
+    {
+     "t0": 0.05,
+     "end": 0.724604,
+     "pause": 0.18
+    },
+    {
+     "t0": 0.904604,
+     "end": 2.047749,
+     "pause": 0.35
+    },
+    {
+     "t0": 2.397749,
+     "end": 3.310498,
+     "pause": 0.35
+    },
+    {
+     "t0": 3.660498,
+     "end": 5.221779,
+     "pause": 0.18
+    },
+    {
+     "t0": 5.401779,
+     "end": 6.810169,
+     "pause": 0.35
+    }
+   ],
+   "windows": [
+    [
+     0,
+     41981
+    ],
+    [
+     40960,
+     105492
+    ],
+    [
+     112640,
+     166104
+    ],
+    [
+     173248,
+     257846
+    ],
+    [
+     256832,
+     341288
+    ]
+   ],
+   "n_total": 341288
+  },
+  {
+   "tag": "t1-female",
+   "text": "Hello there, my name is Chimera. Can you hear me? I can read long answers, one sentence at a time.",
+   "body": "female",
+   "phrases": [
+    {
+     "t0": 0.05,
+     "end": 0.724604,
+     "pause": 0.18
+    },
+    {
+     "t0": 0.904604,
+     "end": 2.047749,
+     "pause": 0.35
+    },
+    {
+     "t0": 2.397749,
+     "end": 3.310498,
+     "pause": 0.35
+    },
+    {
+     "t0": 3.660498,
+     "end": 5.221779,
+     "pause": 0.18
+    },
+    {
+     "t0": 5.401779,
+     "end": 6.810169,
+     "pause": 0.35
+    }
+   ],
+   "windows": [
+    [
+     0,
+     41981
+    ],
+    [
+     40960,
+     105492
+    ],
+    [
+     112640,
+     166104
+    ],
+    [
+     173248,
+     257846
+    ],
+    [
+     256832,
+     341288
+    ]
+   ],
+   "n_total": 341288
+  },
+  {
+   "tag": "t2-male",
+   "text": "The weather today is mild, with a light breeze from the west. Later this evening, the clouds will thicken, and rain may arrive before midnight.",
+   "body": "male",
+   "phrases": [
+    {
+     "t0": 0.05,
+     "end": 1.508887,
+     "pause": 0.18
+    },
+    {
+     "t0": 1.688887,
+     "end": 3.49628,
+     "pause": 0.35
+    },
+    {
+     "t0": 3.84628,
+     "end": 4.84096,
+     "pause": 0.18
+    },
+    {
+     "t0": 5.02096,
+     "end": 6.236598,
+     "pause": 0.18
+    },
+    {
+     "t0": 6.416598,
+     "end": 8.437091,
+     "pause": 0.35
+    }
+   ],
+   "windows": [
+    [
+     0,
+     79627
+    ],
+    [
+     78656,
+     175022
+    ],
+    [
+     182208,
+     239567
+    ],
+    [
+     238592,
+     306557
+    ],
+    [
+     305536,
+     419380
+    ]
+   ],
+   "n_total": 419380
+  },
+  {
+   "tag": "t2-female",
+   "text": "The weather today is mild, with a light breeze from the west. Later this evening, the clouds will thicken, and rain may arrive before midnight.",
+   "body": "female",
+   "phrases": [
+    {
+     "t0": 0.05,
+     "end": 1.508887,
+     "pause": 0.18
+    },
+    {
+     "t0": 1.688887,
+     "end": 3.49628,
+     "pause": 0.35
+    },
+    {
+     "t0": 3.84628,
+     "end": 4.84096,
+     "pause": 0.18
+    },
+    {
+     "t0": 5.02096,
+     "end": 6.236598,
+     "pause": 0.18
+    },
+    {
+     "t0": 6.416598,
+     "end": 8.437091,
+     "pause": 0.35
+    }
+   ],
+   "windows": [
+    [
+     0,
+     79627
+    ],
+    [
+     78656,
+     175022
+    ],
+    [
+     182208,
+     239567
+    ],
+    [
+     238592,
+     306557
+    ],
+    [
+     305536,
+     419380
+    ]
+   ],
+   "n_total": 419380
+  },
+  {
+   "tag": "t3-male",
+   "text": "First, open the settings page. Then choose a voice, adjust the pitch, and press play. If nothing happens, check the volume. Does that make sense?",
+   "body": "male",
+   "phrases": [
+    {
+     "t0": 0.05,
+     "end": 0.58165,
+     "pause": 0.18
+    },
+    {
+     "t0": 0.76165,
+     "end": 2.087275,
+     "pause": 0.35
+    },
+    {
+     "t0": 2.437275,
+     "end": 3.530244,
+     "pause": 0.18
+    },
+    {
+     "t0": 3.710244,
+     "end": 4.53719,
+     "pause": 0.18
+    },
+    {
+     "t0": 4.71719,
+     "end": 5.661189,
+     "pause": 0.35
+    },
+    {
+     "t0": 6.011189,
+     "end": 7.084753,
+     "pause": 0.18
+    },
+    {
+     "t0": 7.264753,
+     "end": 8.260373,
+     "pause": 0.35
+    },
+    {
+     "t0": 8.610373,
+     "end": 9.7303,
+     "pause": 0.35
+    }
+   ],
+   "windows": [
+    [
+     0,
+     35120
+    ],
+    [
+     34112,
+     107390
+    ],
+    [
+     114560,
+     176652
+    ],
+    [
+     175680,
+     224986
+    ],
+    [
+     224000,
+     278938
+    ],
+    [
+     286080,
+     347269
+    ],
+    [
+     346304,
+     403698
+    ],
+    [
+     410880,
+     481454
+    ]
+   ],
+   "n_total": 481454
+  },
+  {
+   "tag": "t3-female",
+   "text": "First, open the settings page. Then choose a voice, adjust the pitch, and press play. If nothing happens, check the volume. Does that make sense?",
+   "body": "female",
+   "phrases": [
+    {
+     "t0": 0.05,
+     "end": 0.58165,
+     "pause": 0.18
+    },
+    {
+     "t0": 0.76165,
+     "end": 2.087275,
+     "pause": 0.35
+    },
+    {
+     "t0": 2.437275,
+     "end": 3.530244,
+     "pause": 0.18
+    },
+    {
+     "t0": 3.710244,
+     "end": 4.53719,
+     "pause": 0.18
+    },
+    {
+     "t0": 4.71719,
+     "end": 5.661189,
+     "pause": 0.35
+    },
+    {
+     "t0": 6.011189,
+     "end": 7.084753,
+     "pause": 0.18
+    },
+    {
+     "t0": 7.264753,
+     "end": 8.260373,
+     "pause": 0.35
+    },
+    {
+     "t0": 8.610373,
+     "end": 9.7303,
+     "pause": 0.35
+    }
+   ],
+   "windows": [
+    [
+     0,
+     35120
+    ],
+    [
+     34112,
+     107390
+    ],
+    [
+     114560,
+     176652
+    ],
+    [
+     175680,
+     224986
+    ],
+    [
+     224000,
+     278938
+    ],
+    [
+     286080,
+     347269
+    ],
+    [
+     346304,
+     403698
+    ],
+    [
+     410880,
+     481454
+    ]
+   ],
+   "n_total": 481454
+  },
+  {
+   "tag": "t4-male",
+   "text": "Music is made of patterns, and patterns are made of time. When voices meet, they can agree or argue. Which one will you hear first?",
+   "body": "male",
+   "phrases": [
+    {
+     "t0": 0.05,
+     "end": 1.581588,
+     "pause": 0.18
+    },
+    {
+     "t0": 1.761588,
+     "end": 3.373114,
+     "pause": 0.35
+    },
+    {
+     "t0": 3.723114,
+     "end": 4.807952,
+     "pause": 0.18
+    },
+    {
+     "t0": 4.987952,
+     "end": 6.354478,
+     "pause": 0.35
+    },
+    {
+     "t0": 6.704478,
+     "end": 8.337038,
+     "pause": 0.35
+    }
+   ],
+   "windows": [
+    [
+     0,
+     83117
+    ],
+    [
+     82112,
+     169110
+    ],
+    [
+     176256,
+     237982
+    ],
+    [
+     236992,
+     312215
+    ],
+    [
+     319360,
+     414578
+    ]
+   ],
+   "n_total": 414578
+  },
+  {
+   "tag": "t4-female",
+   "text": "Music is made of patterns, and patterns are made of time. When voices meet, they can agree or argue. Which one will you hear first?",
+   "body": "female",
+   "phrases": [
+    {
+     "t0": 0.05,
+     "end": 1.581588,
+     "pause": 0.18
+    },
+    {
+     "t0": 1.761588,
+     "end": 3.373114,
+     "pause": 0.35
+    },
+    {
+     "t0": 3.723114,
+     "end": 4.807952,
+     "pause": 0.18
+    },
+    {
+     "t0": 4.987952,
+     "end": 6.354478,
+     "pause": 0.35
+    },
+    {
+     "t0": 6.704478,
+     "end": 8.337038,
+     "pause": 0.35
+    }
+   ],
+   "windows": [
+    [
+     0,
+     83117
+    ],
+    [
+     82112,
+     169110
+    ],
+    [
+     176256,
+     237982
+    ],
+    [
+     236992,
+     312215
+    ],
+    [
+     319360,
+     414578
+    ]
+   ],
+   "n_total": 414578
+  }
+ ]
+}
