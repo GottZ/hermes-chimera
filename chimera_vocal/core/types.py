@@ -1,4 +1,4 @@
-"""Plain data types shared by text, planning, control and the engine (INTERFACES §4).
+"""Plain data types shared by text, planning, control and the engine.
 
 Field names are snake_case; ``to_json()``/``from_json()`` use the template's serde form (camelCase,
 optional fields omitted when None), so goldens and exported vectors load without translation tables.
@@ -220,7 +220,7 @@ class PlannedSegment:
     kind: str
     t0: float
     t1: float
-    stress: int | None = None   # serde Option<u8> (phonetics/mod.rs:58-66); added to INTERFACES §4 in S0
+    stress: int | None = None   # serde Option<u8> (phonetics/mod.rs:58-66); needed for exact plan comparisons
 
     def to_json(self) -> dict:
         d: dict[str, Any] = {"ipa": self.ipa, "t0": self.t0, "t1": self.t1}
@@ -294,7 +294,7 @@ _GOLDEN = 0x9E3779B9
 
 
 def _derive(base: int, n: int) -> int:
-    """mulberry32 output of state (base ^ (0x9E3779B9 * n mod 2^32)); never 0 (INTERFACES §4)."""
+    """mulberry32 output of state (base ^ (0x9E3779B9 * n mod 2^32)); never 0 (a zero seed would be replaced by 1 anyway)."""
     x = (base ^ ((_GOLDEN * n) & 0xFFFFFFFF)) & 0xFFFFFFFF
     _, v = rng_next(x)
     s = int(v * 4294967296.0)
@@ -313,7 +313,8 @@ class Seeds:
     def for_voice(cls, index: int, seed: int | None = None) -> "Seeds":
         """Voice ``index`` of a score. ``seed`` overrides: 0 = template seeds (reproduction); None -> index.
 
-        n = 0 gives the template seeds; n >= 1 derives all three (D§2.8, D§8.3).
+        n = 0 gives the template seeds; n >= 1 derives all three, so equally parametrised voices do not share
+        drift and jitter sequences.
         """
         n = index if seed is None else (int(seed) & 0xFFFFFFFF)
         if n < 0:
@@ -325,7 +326,8 @@ class Seeds:
 
     @classmethod
     def for_window(cls, base: "Seeds", k: int) -> "Seeds":
-        """Phrase window ``k`` of one utterance: k = 0 -> ``base``; k >= 1 derived (D§3.3, P1-13)."""
+        """Phrase window ``k`` of one utterance: k = 0 -> ``base``; k >= 1 derived, so each phrase window starts with
+        its own drift/jitter sequence."""
         if k < 0:
             raise ValueError("window index must be >= 0")
         if k == 0:

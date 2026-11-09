@@ -1,4 +1,4 @@
-"""Hermes plugin entry point for chimera (C5 owns this file; INTERFACES §1, §15).
+"""Hermes plugin entry point for chimera.
 
 Imports nothing heavy: numpy and the engine load lazily inside the handlers.
 """

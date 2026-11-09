@@ -1,6 +1,6 @@
 """JIT helpers with the template's JavaScript number semantics (math.rs) -- the ONLY implementation.
 
-JIT file (INTERFACES §4, §6.4a): loaded under the fixed module name ``_chimera_nbmath`` by the worker's
+JIT file: loaded under the fixed module name ``_chimera_nbmath`` by the worker's
 numba loader, which sets ``CHIMERA_JIT`` to ``numba.njit(...)`` before executing this file. Imported as
 part of the package, ``jit`` is the identity and every function runs as plain CPython (the reference).
 

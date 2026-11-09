@@ -72,7 +72,7 @@ def write_wav(path: str | os.PathLike, samples: np.ndarray, rate: int, *, bits: 
 
 def write_wav_chunked(path: str | os.PathLike, chunks: Iterable[np.ndarray], rate: int, channels: int,
                       n_frames: int) -> None:
-    """16-bit WAV written header first (``n_frames`` known), then chunk by chunk (P1-05).
+    """16-bit WAV written header first (``n_frames`` known), then chunk by chunk (memory stays bounded for long mixes).
 
     Byte-identical to ``write_wav(path, concatenate(chunks), rate)``. A frame-count mismatch removes the file
     and raises ValueError.

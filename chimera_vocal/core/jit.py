@@ -1,4 +1,4 @@
-"""JIT-file manifest type (INTERFACES §6.4a). No numba import here: the loader lives in dsp/backend.py
+"""JIT-file manifest type. No numba import here: the loader lives in dsp/backend.py
 and runs only inside worker processes.
 
 Rules for every JIT file: first statement after the imports is

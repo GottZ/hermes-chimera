@@ -1,1 +1,1 @@
-"""Shared foundations (C0, INTERFACES §4): JS math semantics, keys, bodies, types, JIT helpers, WAV I/O."""
+"""Shared foundations: the template's JavaScript number semantics, keys, bodies, data types, JIT helpers, WAV I/O."""

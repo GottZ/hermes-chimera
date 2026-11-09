@@ -3,22 +3,22 @@
 Conformance vectors exported from the template's Rust engine for the port's tests. This README covers the files
 written by the S0 vector export: `rng.json`, `decimator.json`, `glottis.json`, `topology.json` and
 `track-<scenario>.json`. The other files in this directory (`audio-head.json`, `g2p.json`, `plan_phrases.json`,
-`plan_song.json`, `geometry9.json`) come from `recon/R1-work/vectors` and describe themselves (`what`/`format` keys).
+`plan_song.json`, `geometry9.json`) come from `tools/vector_export/r1` and describe themselves (`what`/`format` keys).
 
 ## Provenance and license
 
 - Template: <https://github.com/jamesondh/chimera-vocal-synth>, commit `092b16ce12b927d473c884ca2dfae53ce1b995df`,
   crate `crates/chimera`. MIT License, "Copyright (c) 2026 Jameson Hodge"; these numbers are derived from it under
   that license (full text in the plugin's [`LICENSE`](../../LICENSE)).
-- Exporter: local repository `/compose/n8n/.gotmp/chimera/lab/vectors` (commit in `manifest-rust.json` there):
+- Exporter: [`tools/vector_export/`](../../tools/vector_export/README.md) (how to re-create the files is described there):
   - `exporter/` builds against the **unmodified** template crate and uses its public API only;
-  - `track-exporter/` builds against `crate-chimera/`, a copy of the template crate with read-only accessors
-    (`src/chimera_ext/`) and a control-step recorder (three hook calls in `HumanVoice::control`). The copy renders
-    all four track scenarios bit-identically to the unmodified crate (see "Self-check");
-  - `assemble.py` selects, cross-checks (public API vs. copy, 199 checks) and writes these files (it never
-    overwrites a file the integrator trimmed, see the last section); `verify.py` re-reads them as a consumer would.
+  - `track-exporter/` builds against a copy of the template crate patched with `crate-chimera.patch`: read-only
+    accessors (`src/chimera_ext/`) and a control-step recorder (four hook calls in `HumanVoice::control`). The copy
+    renders all four track scenarios bit-identically to the unmodified crate (see "Self-check");
+  - `assemble.py` selects, cross-checks (public API vs. copy, 199 checks) and writes these files (it keeps the
+    integrator's trim of `rng.json`, see the last section); `verify.py` re-reads them as a consumer would.
 - Build profile as the template workspace (release, opt-level 3, LTO fat, codegen-units 1), rustc 1.99.1.
-- Full-length versions live in the lab directory `CHIMERA_LAB_REFS` (`/compose/n8n/.gotmp/chimera/lab/refs`):
+- Full-length versions live in the lab directory `$CHIMERA_LAB_REFS` (not part of the repository):
   `tracks/track-<scenario>.full.json`, `tracks/glottis-next.full.json`, `tracks/topology.full.json`,
   `audio/track_<scenario>.f32`, `audio/stop_male_text.f32`.
 
@@ -133,10 +133,10 @@ effort, f0 glide, `human_voice.rs:477-501`); the recorder takes the row as the l
 `render()` changes none of these values between `control()` and the block's first sample (`human_voice.rs:354-366`).
 The row `initial` stays the state after the constructor. `n_blocks` = ceil(n_samples·2/128).
 
-*Correction (S1-V3fix, requests C2-3/C3-1):* the track files of exporter commit `238dacb` took the row after the
-contact re-apply but before the breath/pitch part, so `p_lung`, `glot_par[f0]`, `glot_par[effort]`
-(and `gate`, `f0_glide` in the full tracks) carried the values of step b−1. The current files (exporter commit `9871d1a`)
-need no shift; the new row b equals the old row b+1 in those fields and the old row b in every other field (checked for every block).
+*Correction:* track files exported before this fix took the row after the contact re-apply but before the
+breath/pitch part, so `p_lung`, `glot_par[f0]`, `glot_par[effort]` (and `gate`, `f0_glide` in the full tracks)
+carried the values of step b−1. The current files need no shift; the new row b equals the old row b+1 in those
+fields and the old row b in every other field (checked for every block, `tools/vector_export/compare_shift.py`).
 
 | key | content |
 |---|---|
@@ -163,17 +163,17 @@ with fs = 96 000 (checked bitwise against the network for every block).
 
 | scenario | provenance | samples | blocks | float rows in the repo | re-apply blocks | P1-critical blocks |
 |---|---|---|---|---|---|---|
-| `sustain-aa-male` | `held_vowel("ɑ")` of R1 (= `r1/voice_male_110hz_aa-back_1s.f32`, bit-identical) | 48 000 | 750 | 0–79 | 0 | none |
-| `hello-male` | `render text "Hello world." male` (= `r1/speech_male_hello_world.f32`, bit-identical) | 57 845 | 904 | 0–79, 625–627 | 170 | 626 |
+| `sustain-aa-male` | `held_vowel("ɑ")` of `tools/vector_export/r1` (= its `voice_male_110hz_aa-back_1s.f32`, bit-identical) | 48 000 | 750 | 0–79 | 0 | none |
+| `hello-male` | `render text "Hello world." male` (= `speech_male_hello_world.f32` of `tools/vector_export/r1`, bit-identical) | 57 845 | 904 | 0–79, 625–627 | 170 | 626 |
 | `stop-male` | `render text "Stop at the top, Pat, and take the tea to the cat." male` | 186 134 | 2 909 | every 49th, 1856–1858 | 749 | 1857 |
-| `song-female` | `render song female`, demo song "Twinkle, twinkle" (= `ref-audio/song-female/twinkle-twinkle-female.wav`, bit-identical) | 494 400 | 7 725 | every 123rd | 725 | 158–160, 609, 629, 635, 642, 1055, 1057, 1058, 1060, 1509, 1529, 1535, 1542, 2905, 6030 |
+| `song-female` | `render song female`, demo song "Twinkle, twinkle" (byte-identical to the template CLI's output `twinkle-twinkle-female.wav`) | 494 400 | 7 725 | every 123rd | 725 | 158–160, 609, 629, 635, 642, 1055, 1057, 1058, 1060, 1509, 1529, 1535, 1542, 2905, 6030 |
 
 **Truncated:** the integer fields are complete for every block of every scenario; float fields only for
 `float_blocks` (blocks 0–79 cover the 4 800-sample audio heads). Every field of every block, plus clock, gate,
 glide f0, `p_lung_now` (lung pressure applied before the block's first sample) and `p_lung_step` (= (p_lung −
 p_lung_now)/128, the per-sample ramp), articulator position/velocity, contact depths, `velum_target`, noise
-coefficients and the list A of every re-apply block: `tracks/track-<scenario>.full.json` in the lab (same key names
-under `blocks`, one entry per block).
+coefficients and the list A of every re-apply block: `$CHIMERA_LAB_REFS/tracks/track-<scenario>.full.json` (same
+key names under `blocks`, one entry per block).
 The audio the tracks belong to: `audio/track_<scenario>.f32` (raw little-endian float32, mono, 48 kHz).
 
 ## Self-check of the track export
@@ -185,7 +185,15 @@ and in record mode every recorded `noise_inherit` predicts the actual filter sta
 REVIEW-1 emulation "final list against the previous block": `hello-male` first exceeds 1e-6 × peak at sample
 40 066 (first bit difference 40 064 = start of block 626), max |Δ| = 1.27e-2 × peak, 10-ms envelope ≤ 0.0006 dB;
 `song-female` from sample 67 523, max 8.4e-3 × peak, envelope ≤ 0.057 dB; `stop-male` stays bit-identical even
-though block 1857 is P1-critical. Numbers and checksums: `manifest-rust.json` in the exporter repository.
+though block 1857 is P1-critical. Numbers and checksums: `manifest-rust.json`, which `tools/vector_export/assemble.py`
+writes into its work directory.
+
+Playback check: a port kernel (CPython reference of the acoustic kernel) driven by these tracks **without any shift**
+reproduces both 4 800-sample heads bit-identically, and all four scenarios over their full length including the last
+block with no sample deviating by more than 1e-6 × peak (`sustain-aa-male` bit-identical; `hello-male`, `stop-male`,
+`song-female`: 1, 6 and 8 single samples differ by at most 2.5e-14, 6.9e-10 and 2.0e-8 × peak — most likely
+last-bit differences of the platform math library against the template's `libm` crate: the identical deviations
+appear with a different kernel form).
 
 ## Repository trims by the integrator (S0)
 
