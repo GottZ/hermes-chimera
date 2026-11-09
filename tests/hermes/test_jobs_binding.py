@@ -151,6 +151,9 @@ def test_job_survives_context_compression(registered, plugin, tool):
         assert foreign["success"] is False and "unknown job" in foreign["error"], (sid, foreign)
         cancel = tool(registered, "chimera_job", {"job_id": jid, "cancel": True}, session_id=sid)
         assert "unknown job" in cancel["error"], (sid, cancel)
+    opened = len(state.OPENED)
+    tool(registered, "chimera_job", {"job_id": jid, "cancel": True}, session_id="s3")
+    assert len(state.OPENED) == opened + 1, "one tool call reads the session store at most once"
 
 
 def test_session_end_stops_its_renders(registered, plugin, tool):

@@ -69,11 +69,18 @@ def related_ids(session_id: Any) -> frozenset:
 
 def related_lookup(kwargs: dict) -> Any:
     """For JobRegistry.wait/cancel: computes ``related_ids`` of the caller's session only when a job does not match
-    the caller's own ids (it reads Hermes' session store)."""
+    the caller's own ids (it reads Hermes' session store), at most once per tool call."""
     session_id = kwargs.get("session_id")
     if not isinstance(session_id, str) or not session_id:
         return None
-    return lambda: related_ids(session_id)
+    found: list = []
+
+    def lookup() -> frozenset:
+        if not found:
+            found.append(related_ids(session_id))
+        return found[0]
+
+    return lookup
 
 
 def cancel_session(session_id: Any) -> list[str]:
