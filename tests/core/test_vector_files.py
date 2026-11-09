@@ -26,7 +26,7 @@ def test_manifest_covers_every_vector_file():
     listed = {f["path"] for f in m["repo_files"]}
     for p in _files():
         if p.name != "manifest.json":
-            assert str(p.relative_to(PACKAGE_DIR.parent)) in listed, p
+            assert p.relative_to(PACKAGE_DIR.parent).as_posix() in listed, p      # manifest paths use "/"
 
 
 def test_audio_heads_resolve():
