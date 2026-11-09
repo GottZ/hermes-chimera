@@ -112,8 +112,8 @@ replies also deliberately start each sentence at the speaking pitch instead of t
 ## Limits
 
 - English words only (other languages are read with English rules). One melody line per voice; one tempo per score.
-- Up to 8 voices and 300 s of music per score. Rendering takes roughly 0.4 s per second of each voice with the
-  numba accelerator and about 5 s per second of each voice without it (spread over several CPU cores).
+- Up to 8 voices and 300 s of music per score. Rendering takes roughly 0.45 s per second of each voice with the
+  numba accelerator and about 8-10 s per second of each voice without it (spread over several CPU cores).
 - Only render lyrics that are in the public domain or written by you or the user; do not render complete
   copyrighted song lyrics.
 
