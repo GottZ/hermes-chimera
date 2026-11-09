@@ -135,26 +135,33 @@ class FakeCtx:
 # --------------------------------------------------------------------------------------------- engine data types
 # Field names follow INTERFACES §5/§7/§8.2; the plugin only reads attributes, so dataclasses suffice.
 
-class FakeChimeraError(Exception):
+# The fake error classes carry the engine's class names: the binding matches engine errors by class name (every
+# plugin copy in a process shares the first copy's engine, so identity checks would miss them).
+
+class ChimeraError(Exception):
     pass
 
 
-class FakeScoreError(FakeChimeraError, ValueError):
+class ScoreError(ChimeraError, ValueError):
     def __init__(self, message: str = "invalid score", errors: list | None = None) -> None:
         super().__init__(message)
         self.errors = list(errors or [])
 
 
-class FakeTextError(FakeChimeraError, ValueError):
+class TextError(ChimeraError, ValueError):
     pass
 
 
-class FakeRenderCancelled(FakeChimeraError):
+class RenderCancelled(ChimeraError):
     pass
 
 
-class FakeBackendError(FakeChimeraError, RuntimeError):
+class BackendError(ChimeraError, RuntimeError):
     pass
+
+
+FakeChimeraError, FakeScoreError, FakeTextError = ChimeraError, ScoreError, TextError
+FakeRenderCancelled, FakeBackendError = RenderCancelled, BackendError
 
 
 @dataclasses.dataclass(frozen=True)
@@ -322,6 +329,15 @@ class FakeScoreResult:
 
 
 @dataclasses.dataclass(frozen=True)
+class FakeSpeechResult:  # = SpeechResult
+    path_wav: str
+    seconds: float
+    sample_rate: int
+    kernel: str
+    render_s: float
+
+
+@dataclasses.dataclass(frozen=True)
 class FakeBackendStatus:
     numpy_ok: bool
     numba_installed: bool
@@ -431,6 +447,7 @@ class FakeEngine:
         self.estimate_s = {"numba": 1.5, "numpy": 15.0}
         self.render_warnings: list[str] = []
         self.cache_dir: str | None = None
+        self.numba_dir: str | None = None          # what numba_cache_dir() returns
         for k, v in knobs.items():
             if not hasattr(self, k):
                 raise AttributeError(k)
@@ -476,8 +493,22 @@ class FakeEngine:
 
     # Engine API
     def speak(self, text: str, voice: Any = "male", *, speed: float | None = None, settle_first: bool = True,
-              cancel: threading.Event | None = None):
-        self._record("speak", text=text, voice=voice, speed=speed, settle_first=settle_first, cancel=cancel)
+              faithful: bool = False, cancel: threading.Event | None = None):
+        self._record("speak", text=text, voice=voice, speed=speed, settle_first=settle_first, faithful=faithful,
+                     cancel=cancel)
+        return self._speak(text, cancel)
+
+    def speak_to_wav(self, text: str, path, voice: Any = "male", *, speed: float | None = None,
+                     settle_first: bool = True, faithful: bool = False, tmp_dir: str | None = None,
+                     cancel: threading.Event | None = None) -> FakeSpeechResult:
+        """Recorded as a "speak" call (with ``path`` and ``tmp_dir``); writes the same WAV as speak().to_wav."""
+        self._record("speak", text=text, voice=voice, speed=speed, settle_first=settle_first, faithful=faithful,
+                     cancel=cancel, path=str(path), tmp_dir=tmp_dir)
+        audio, kernel = self._speak(text, cancel)
+        audio.to_wav(path)
+        return FakeSpeechResult(str(path), audio.duration_s(), FS, kernel, 0.0)
+
+    def _speak(self, text: str, cancel: threading.Event | None):
         self._maybe_fail("speak")
         if self.speak_delay:
             end = time.monotonic() + self.speak_delay
@@ -487,9 +518,10 @@ class FakeEngine:
                 time.sleep(0.01)
         return FakeAudio(self.expected_samples(text)), self.kernel
 
-    def speak_pcm16(self, text: str, voice: Any = "male", *, speed: float | None = None,
-                    cancel: threading.Event | None = None) -> Iterator[bytes]:
-        self._record("speak_pcm16", text=text, voice=voice, speed=speed, cancel=cancel)
+    def speak_pcm16(self, text: str, voice: Any = "male", *, speed: float | None = None, faithful: bool = False,
+                    tmp_dir: str | None = None, cancel: threading.Event | None = None) -> Iterator[bytes]:
+        self._record("speak_pcm16", text=text, voice=voice, speed=speed, faithful=faithful, tmp_dir=tmp_dir,
+                     cancel=cancel)
         if cancel is not None:
             with self._lock:
                 self.cancel_events.append(cancel)
@@ -539,9 +571,9 @@ class FakeEngine:
 
     def render_score(self, score: "dict | str", out_dir: str, stem: str, *, want_mp3: bool,
                      progress: Callable[[float], None] | None = None,
-                     cancel: threading.Event | None = None) -> FakeScoreResult:
+                     cancel: threading.Event | None = None, tmp_dir: str | None = None) -> FakeScoreResult:
         self._record("render_score", score=score, out_dir=out_dir, stem=stem, want_mp3=want_mp3,
-                     cancel=cancel)
+                     cancel=cancel, tmp_dir=tmp_dir)
         self._maybe_fail("render_score")
         t0 = time.monotonic()
         steps = max(1, int(self.render_delay / 0.02)) if self.render_delay else 1
@@ -594,6 +626,12 @@ class FakeEngine:
 
     def shutdown(self) -> None:
         self._record("shutdown")
+
+    def numba_cache_dir(self) -> str | None:
+        return self.numba_dir
+
+    def apply_settings(self, config: Any) -> None:
+        self._record("apply_settings", config=config)
 
 
 # --------------------------------------------------------------------------------------------- fake engine package

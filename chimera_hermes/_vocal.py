@@ -52,10 +52,23 @@ def api() -> Any:
 
 
 def engine(c: Any = None) -> Any:
-    """The process-wide Engine, configured from this plugin's settings."""
+    """The process-wide Engine with this plugin's current settings applied: a changed ``backend``, ``workers``,
+    ``text_prep`` or ``max_voices`` takes effect with the next render, without restarting Hermes."""
     from . import settings
 
-    return api().get_engine(settings.engine_config(c if c is not None else _CTX))
+    cfg = settings.engine_config(c if c is not None else _CTX)
+    eng = api().get_engine(cfg)
+    apply = getattr(eng, "apply_settings", None)
+    if apply is not None:
+        apply(cfg)
+    return eng
+
+
+def is_error(e: BaseException, name: str) -> bool:
+    """``e`` is the engine error class ``name`` (ScoreError, TextError, ...). Matched by class name, not identity:
+    every copy of the plugin in one process (Hermes loads one per profile) shares the engine of the first copy, so
+    its exceptions are instances of that copy's classes."""
+    return any(c.__name__ == name for c in type(e).__mro__)
 
 
 def jobs() -> Any:

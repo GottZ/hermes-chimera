@@ -1,8 +1,10 @@
 """Text-to-speech provider ``chimera``.
 
-Output contract with Hermes: WAV PCM16 mono 48 kHz. A path ending in ``.ogg`` gets the WAV bytes as given (Hermes
-turns them into Ogg/Opus with ffmpeg, or renames honestly to ``.wav`` without it); any other path is replaced by
-``<stem>.wav`` and that path is returned - WAV bytes never sit under ``.mp3``. Streaming yields raw int16 PCM at the
+Output contract with Hermes: WAV PCM16 mono 48 kHz. A path ending in ``.ogg`` or ``.wav`` gets the WAV bytes as given
+(for ``.ogg`` Hermes turns them into Ogg/Opus with ffmpeg, or renames honestly to ``.wav`` without it); any other path
+is replaced by ``<stem>.wav`` and that path is returned - WAV bytes never sit under ``.mp3``. An existing
+``<stem>.wav`` that Hermes did not name is never overwritten: chimera then writes ``<stem>.<random>.wav``. Audio is
+rendered to disk window by window, so memory does not grow with the text. Streaming yields raw int16 PCM at the
 engine's native 48 kHz. ``agent.tts_provider`` is imported inside ``build_provider`` so that importing the plugin
 never pulls Hermes internals; the registered class combines the ``ChimeraTTSProvider`` methods with Hermes' base.
 """
@@ -11,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import secrets
 import threading
 from typing import Any, Iterator
 
@@ -89,19 +92,18 @@ class ChimeraTTSProvider:
                    speed: float | None = None, format: str = "mp3", **extra: Any) -> str:
         if not self.is_available():
             raise FileNotFoundError(_vocal.NUMPY_MISSING)
-        out = str(output_path)
-        path = out if out.lower().endswith(".ogg") else os.path.splitext(out)[0] + ".wav"
+        path, reserved = _target(str(output_path))
         try:
-            api = _vocal.api()
             preset, spd = self._voice_and_speed(voice, speed)
-            try:
-                audio, _kernel = _vocal.engine(self._ctx).speak(text, preset, speed=spd)
-            except api.TextError as e:
-                raise RuntimeError(str(e) or NOTHING_SPEAKABLE) from e
-            audio.to_wav(path, bits=16)
-        except RuntimeError:
-            raise
+            _vocal.engine(self._ctx).speak_to_wav(text, path, preset, speed=spd,
+                                                  faithful=settings.faithful(self._ctx), tmp_dir=_tmp_dir())
         except Exception as e:  # never ValueError: Hermes would report a configuration error
+            if reserved:
+                _remove_empty(path)
+            if _vocal.is_error(e, "TextError"):
+                raise RuntimeError(str(e) or NOTHING_SPEAKABLE) from e
+            if isinstance(e, RuntimeError):
+                raise
             raise RuntimeError(f"chimera synthesis failed: {type(e).__name__}: {e}") from e
         return path
 
@@ -119,23 +121,22 @@ class ChimeraTTSProvider:
         # frees its render slot; nothing is shared between concurrent calls (Hermes prefetches up to 3 sentences).
         cancel = threading.Event()
         gen = None
-        api = None
         total = 0
         try:
             try:
-                api = _vocal.api()
-                gen = iter(_vocal.engine(self._ctx).speak_pcm16(text, preset, speed=spd, cancel=cancel))
+                gen = iter(_vocal.engine(self._ctx).speak_pcm16(text, preset, speed=spd,
+                                                                faithful=settings.faithful(self._ctx),
+                                                                tmp_dir=_tmp_dir(), cancel=cancel))
                 for chunk in gen:
                     total += len(chunk)
                     if total > STREAM_WARN_BYTES and total - len(chunk) <= STREAM_WARN_BYTES:
                         logger.warning("chimera: one sentence longer than 170 s; Hermes cuts streams at 16 MiB")
                     yield chunk
-            except RuntimeError:
-                raise
             except Exception as e:
-                text_error = getattr(api, "TextError", None)
-                if isinstance(text_error, type) and isinstance(e, text_error):
+                if _vocal.is_error(e, "TextError"):
                     raise RuntimeError(str(e) or NOTHING_SPEAKABLE) from e
+                if isinstance(e, RuntimeError):
+                    raise
                 raise RuntimeError(f"chimera streaming failed: {type(e).__name__}: {e}") from e
         finally:
             cancel.set()
@@ -160,6 +161,43 @@ class ChimeraTTSProvider:
             _vocal.engine(self._ctx).hold_warm(False)
         except Exception as e:
             logger.warning("chimera: release failed: %s", e)
+
+
+def _target(out: str) -> tuple[str, bool]:
+    """(path to write, reserved by us). ``.ogg``/``.wav`` paths are Hermes' own choice and used as given. Otherwise
+    ``<stem>.wav`` - reserved exclusively so an existing file of the user is never overwritten; if it exists,
+    ``<stem>.<8 hex>.wav``."""
+    low = out.lower()
+    if low.endswith(".ogg") or low.endswith(".wav"):
+        return out, False
+    stem = os.path.splitext(out)[0]
+    candidates = [stem + ".wav"] + [f"{stem}.{secrets.token_hex(4)}.wav" for _ in range(20)]
+    for cand in candidates:
+        try:
+            fd = os.open(cand, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            continue
+        os.close(fd)
+        return cand, True
+    raise RuntimeError(f"chimera synthesis failed: no free file name next to {out}")
+
+
+def _remove_empty(path: str) -> None:
+    try:
+        if os.path.getsize(path) == 0:
+            os.remove(path)
+    except OSError:
+        pass
+
+
+def _tmp_dir() -> str | None:
+    """Hermes' cache folder for chimera's temporary files (cleaned of leftovers after a day); None if unknown."""
+    try:
+        from . import paths
+
+        return str(paths.tmp_dir(create=True))
+    except Exception:  # noqa: BLE001 - the engine then uses the output folder / system temp
+        return None
 
 
 _CLASSES: dict = {}
