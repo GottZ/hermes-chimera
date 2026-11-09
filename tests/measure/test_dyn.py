@@ -15,10 +15,13 @@ LEVELS = ["pp", "p", "mp", "mf", "f", "ff"]
 BPM = 60
 
 
-def dyn_score() -> dict:
+def dyn_score(dyn: bool = True) -> dict:
     notes = []
     for lv in LEVELS:
-        notes.append({"pitch": "A3", "beats": 2, "lyric": "ah", "dyn": lv})
+        n = {"pitch": "A3", "beats": 2, "lyric": "ah"}
+        if dyn:
+            n["dyn"] = lv
+        notes.append(n)
     return {"bpm": BPM, "voices": [{"body": "male", "notes": notes}]}
 
 
@@ -37,17 +40,31 @@ def test_dyn_levels(pipeline):
 
 
 def test_dyn_no_click(pipeline):
+    """Around each level change the 10-ms envelope moves at most 1.5 dB more per frame than the same note change
+    without ``dyn`` (the 80-ms ramp spreads <= 6.1 dB over 8 frames), and no sample step exceeds 1.5× the largest
+    step inside the neighbouring notes."""
     report, jobs, mixes, n_mix, tracks = pipeline.tracks(dyn_score())
     out, _ = mix(tracks, mixes, n_mix, stereo=False, normalize=True)
-    env = envelope_db(out)
+    r0, j0, m0, n0, t0_tracks = pipeline.tracks(dyn_score(dyn=False))
+    plain, _ = mix(t0_tracks, m0, n0, stereo=False, normalize=True)
+    env, env0 = envelope_db(out), envelope_db(plain)
     t0 = report.lead_in
     for k in range(1, len(LEVELS)):
         b = int(round((t0 + 2 * k) * 100))          # 10-ms frame of the beat
-        around = env[b - 12:b + 8]
-        jumps = np.abs(np.diff(around))
-        assert jumps.max() <= 3.0, f"transition {LEVELS[k - 1]}->{LEVELS[k]}: 10-ms jump {jumps.max():.2f} dB"
-    d = np.abs(np.diff(out.astype(np.float64)))
-    seg = [d[int((t0 + 2 * k + 0.3) * 48000):int((t0 + 2 * k + 1.7) * 48000)].max() for k in range(len(LEVELS))]
+        jumps = np.abs(np.diff(env[b - 12:b + 8]))
+        ref = np.abs(np.diff(env0[b - 12:b + 8]))
+        assert jumps.max() <= ref.max() + 1.5, \
+            f"transition {LEVELS[k - 1]}->{LEVELS[k]}: 10-ms jump {jumps.max():.2f} dB (without dyn {ref.max():.2f})"
+    d, d0 = np.abs(np.diff(out.astype(np.float64))), np.abs(np.diff(plain.astype(np.float64)))
+
+    def ratio(dd, x, b):
+        after = x[b + 960:b + 24000].astype(np.float64)
+        return dd[b - 4800:b + 960].max() / np.sqrt(np.mean(after * after))
+
     for k in range(1, len(LEVELS)):
         b = int((t0 + 2 * k) * 48000)
-        assert d[b - 4800:b + 960].max() <= 1.5 * max(seg[k - 1], seg[k]), "no click at the transition"
+        r_dyn, r_plain = ratio(d, out, b), ratio(d0, plain, b)
+        assert r_dyn <= 1.5 * r_plain, f"click at {LEVELS[k - 1]}->{LEVELS[k]}: step/RMS {r_dyn:.3f} vs {r_plain:.3f}"
+    env_gain = mixes[0].gain_env.astype(np.float64)
+    step_db = np.abs(np.diff(20 * np.log10(env_gain)))
+    assert step_db.max() <= 6.0 / (0.08 * 48000) * 1.01 + 1e-6, "the mix gain ramps, it never steps"

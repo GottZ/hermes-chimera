@@ -58,13 +58,17 @@ def test_one_kernel_per_request(stub_planner, fake_workers, make_engine, tmp_pat
     (tmp_path / "ref").mkdir()
     (tmp_path / "flip").mkdir()
     ref, _ = render_bytes(make_engine(workers=3), tmp_path, "ref")
-    calls = {"n": 0}
+    state = {"ready": False}
+    original = sched.RenderScheduler.choose_kernel
 
-    def marker_appears_during_request(base):
-        calls["n"] += 1
-        return None if calls["n"] == 1 else {"content_hash": "x", "selftest": {"passed": True}}
+    def choose_then_marker_appears(self):
+        k = original(self)
+        state["ready"] = True          # the warm-up finishes right after the request chose its kernel
+        return k
     monkeypatch.setattr(sched, "_numba_installed", lambda: True)
-    monkeypatch.setattr(sched, "_marker_ok", marker_appears_during_request)
+    monkeypatch.setattr(sched, "_marker_ok", lambda base: {"content_hash": "x", "selftest": {"passed": True}}
+                        if state["ready"] else None)
+    monkeypatch.setattr(sched.RenderScheduler, "choose_kernel", choose_then_marker_appears)
     got, res = render_bytes(make_engine(workers=3), tmp_path, "flip")
     assert res.kernel == "numpy", "the kernel chosen at submit holds for the whole request"
     assert got == ref, "no job of the request switched to numba when the marker appeared"

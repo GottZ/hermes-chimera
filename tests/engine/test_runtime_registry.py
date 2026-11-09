@@ -29,6 +29,7 @@ SCRIPT = textwrap.dedent(r"""
     sys.path.insert(0, tmp)
     mods = {n: importlib.import_module(n + ".chimera_vocal.runtime") for n in ("plugA", "plugB", "plugC", "plugD")}
     pk = {n: importlib.import_module(n + ".chimera_vocal") for n in mods}
+    e1 = pk["plugA"].get_engine(pk["plugA"].EngineConfig(workers=3))     # creates the runtime: its config wins
     a, b, c, d = (mods[n].runtime() for n in ("plugA", "plugB", "plugC", "plugD"))
     out = {"numpy_after_runtime": "numpy" in sys.modules}
     with a.lock:
@@ -43,8 +44,6 @@ SCRIPT = textwrap.dedent(r"""
         "fixed_module": "_chimera_runtime" in sys.modules,
         "engine_sched": a.engine.scheduler is a.scheduler,
     })
-    EA = pk["plugA"].EngineConfig
-    e1 = pk["plugA"].get_engine(EA(workers=3))
     e2 = pk["plugB"].get_engine(pk["plugB"].EngineConfig(workers=2))
     out["get_engine_shared"] = e1 is e2 is a.engine
     out["first_config_wins"] = e1.status().workers

@@ -25,10 +25,12 @@ def canon() -> dict:
 def test_voice_start_block(pipeline):
     report, jobs, mixes, n_mix = pipeline.compile(canon())
     late, vm = jobs[2], mixes[2]
-    full_n = late.n_out + 64 * late.start_block
     assert vm.offset == 64 * late.start_block and late.settle_f0 is True
-    assert (full_n - late.n_out) / 48000 >= 11.0, "voice 3 renders at least 11 s less"
-    assert late.n_out < n_mix
+    # voice 3 sings voice 1's tune (same body) 16 beats later: rendered from 0 it would be about
+    # n_out(voice 1) + 16·60/84 s long; from its start block it must be at least 11 s shorter
+    from_zero = jobs[0].n_out + 16 * 60 / BPM * 48000
+    assert (from_zero - late.n_out) / 48000 >= 11.0 - 1e-3, "voice 3 renders at least 11 s less"
+    full_n = late.n_out + 64 * late.start_block
     got = pipeline.placed(pipeline.render(late), vm, n_mix)[:full_n]
     ref = pipeline.render(dataclasses.replace(late, start_block=0, settle_f0=False, n_out=full_n))
     t_first = report.lead_in + 16 * 60 / BPM

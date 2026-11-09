@@ -245,7 +245,8 @@ class SplitMetrics:
     env_p95_db: float          # |Δ dB| of 10-ms RMS, frames where the reference is above max − 45 dB
     f0_p90_ct: float           # |Δ cents| (octave-folded) where both are voiced
     f0_onset_p90_ct: float     # same, restricted to [t0_k, t0_k + 0.15 s] for the given onsets
-    third_rms_db: float        # RMS over 21 third-octave bands of the dB difference
+    third_rms_db: float        # RMS of the dB difference over the third-octave bands within 40 dB of the
+                               # reference's strongest band (near-empty bands only carry window leakage)
 
 
 def compare_split(ref: np.ndarray, got: np.ndarray, fs: float = FS, *, onsets_s: Sequence[float] = (),
@@ -271,5 +272,7 @@ def compare_split(ref: np.ndarray, got: np.ndarray, fs: float = FS, *, onsets_s:
         onset = float(np.percentile(do, 90))
     else:
         onset = 0.0
-    third = float(np.sqrt(np.mean((third_octave_db(ref, fs) - third_octave_db(got, fs)) ** 2)))
+    tr, tg = third_octave_db(ref, fs), third_octave_db(got, fs)
+    active = tr > tr.max() - 40.0      # bands carrying the signal (E1-A's speech had all 21 within ~20 dB)
+    third = float(np.sqrt(np.mean((tr[active] - tg[active]) ** 2)))
     return SplitMetrics(env, f0p90, onset, third)

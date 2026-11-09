@@ -3,8 +3,9 @@
 * ``FakeVoice`` - deterministic synth with the HumanVoice API (INTERFACES §6.5). Signal model (global output
   sample g = 64·start_block + local index, t = g/fs):
     - f0(t): target of the active pitch gesture (``targets["f0"]``, active from t0 − ramp_in to t1 + ramp_out,
-      the latest t0 wins), else the source f0; without ``settle_pitch()`` the first 50 ms of the voice glide
-      geometrically from 110 Hz (the private glide state of human_voice.rs:49), with it there is no glide;
+      the latest t0 wins), else the source f0; without ``settle_pitch()`` a fresh voice starts at 110 Hz and its
+      log-f0 approaches the target as exp(-t/0.06 s) (the private glide state of human_voice.rs:49,225,499-500),
+      with it there is no glide;
     - carrier: harmonics H1..H4 = 0.15/1.0/0.1/0.3 (H2 16.5 dB above H1 like a sung /ɑ/, E1 pitch-range report:
       naked YIN reports the octave above, sung_f0 must not), phase
       accumulated sample by sample (chunk-size independent, bit-exact);
@@ -45,7 +46,7 @@ HARMONICS = (0.15, 1.0, 0.1, 0.3)   # H1 16.5 dB below H2 (sung /ɑ/: 11-18 dB, 
 LIMIT = 0.75
 STOPS = frozenset({"t", "d", "k", "p", "b", "g"})
 BURST_LEN = 48
-GLIDE_S = 0.05
+GLIDE_S = 0.06
 NUMBA_SCALE = 1.0 + 2.0 ** -10
 _SOURCE_CAMEL = {"vibratoDepth": "vibrato_depth", "vibratoRate": "vibrato_rate"}
 
@@ -164,10 +165,12 @@ class FakeVoice:
             if m.any():
                 f[m] = float(x.targets["f0"])
         if not self.settled:
+            # private glide state of a fresh voice starts at 110 Hz and follows the target with the source glide
+            # time (0.06 s, human_voice.rs:49,225,499-500): log-f decays as exp(-t/τ)
             local = (g - self.g0) / self.fs
-            m = local < GLIDE_S
+            m = local < 12 * GLIDE_S
             if m.any():
-                f[m] = 110.0 * (f[m] / 110.0) ** (local[m] / GLIDE_S)
+                f[m] = f[m] * (110.0 / f[m]) ** np.exp(-local[m] / GLIDE_S)
         return f
 
     def _vowel(self, t: np.ndarray) -> np.ndarray:

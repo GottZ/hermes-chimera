@@ -146,7 +146,7 @@ def test_crash_retried_once(fake_workers, make_scheduler, tmp_path):
     stats, data = run(sched, job)
     assert marker.exists(), "the first attempt crashed"
     assert np.array_equal(data, reference_render(job))
-    pids = {r[1] for r in read_logs(logs) if r[0] == "factory"}
+    pids = {int(r[1]) for r in read_logs(logs) if r[0] == "factory"}
     assert len(pids) == 2 and stats.worker_pid in pids and int(marker.read_text()) != stats.worker_pid
     assert sched.status()["numba_state"] in ("absent",)
 

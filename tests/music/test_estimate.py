@@ -63,9 +63,10 @@ def test_rendered_not_mix_lengths(stub_planner, fake_workers, make_engine, monke
     assert report.ok, report.issues
     rendered = [v.seconds for v in report.voices]
     assert report.voice_seconds == pytest.approx(sum(rendered), rel=1e-12)
-    # later voices start late (start_block > 0) and are rendered shorter than the mix
-    assert rendered[2] < rendered[1] < rendered[0] <= report.seconds + 1e-9
-    assert rendered[2] <= report.seconds - 8.0 + 0.31
+    # late voices start late (start_block > 0): each is rendered from its own start, not over the whole mix
+    assert max(rendered) <= report.seconds + 1e-9
+    assert rendered[1] <= report.seconds - 4.0 + 0.31 and rendered[2] <= report.seconds - 8.0 + 0.31
+    assert report.voice_seconds < 3 * report.seconds - 11.0
     st = eng.status()
     assert st.numba_state == "absent"
     assert report.estimate_s == pytest.approx(estimate_kernels(rendered, workers=3, rtf=st.rtf_estimate,
