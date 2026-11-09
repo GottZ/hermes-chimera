@@ -210,9 +210,10 @@ for the same input. "Identical" below means: the same length, and no sample diff
   sample (measured on single melodies and a two-voice duet).
 - Speech with the `faithful` setting (or `faithful: true` on `chimera_speak`, see Settings): the whole text in one
   piece, starting with the original's glide up from 110 Hz, as `chimera render text` does. (The web app's Speak mode
-  uses other default pitches - male 110 Hz, child 260 Hz - and the browser's sample rate and volume.) Measured on
-  three new sentences that text preparation leaves unchanged, in the male, female and child voices: same length,
-  largest difference 5e-9 of the peak.
+  uses other default pitches - male 110 Hz, child 260 Hz - and the browser's sample rate and volume.) Measured
+  through the setting itself on the original's reference sentence in the male, female and child voices: same
+  length, largest difference 1.8e-10 of the peak with numba and 1.5e-9 with numpy. The same engine path, called
+  directly on three further sentences that text preparation leaves unchanged, stays within 5e-9 of the peak.
 - The pronouncing dictionary (decompressed from the original's `cmudict.txt.gz`) and the phoneme tables are the
   original's data byte for byte (sha256 in `THIRD_PARTY_NOTICES.md`).
 
